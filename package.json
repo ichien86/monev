@@ -1,0 +1,25 @@
+{
+  "name": "simonev-boyolali",
+  "private": true,
+  "version": "1.0.0",
+  "description": "SIMONEV Boyolali — Sistem Pemantauan Kinerja Indikator RPJMD. Monorepo: aplikasi Ops (operasional) + Eksekutif (dashboard pimpinan) + paket bersama.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:ops": "npm run dev -w apps/ops",
+    "dev:eksekutif": "npm run dev -w apps/eksekutif",
+    "dev:worker": "npm run worker -w apps/ops",
+    "build": "npm run build -w packages/db && npm run build -w packages/schemas && npm run build -w apps/ops && npm run build -w apps/eksekutif",
+    "typecheck": "npm run typecheck -w packages/db && npm run typecheck -w packages/schemas && npm run typecheck -w apps/ops && npm run typecheck -w apps/eksekutif",
+    "seed": "tsx --env-file=.env.local packages/db/src/seed.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  },
+  "license": "UNLICENSED"
+}
