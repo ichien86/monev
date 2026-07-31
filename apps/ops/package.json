@@ -1,0 +1,41 @@
+{
+  "name": "@simonev/ops",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "worker": "tsx src/worker/index.ts"
+  },
+  "dependencies": {
+    "@simonev/db": "*",
+    "@simonev/schemas": "*",
+    "next": "15.5.22",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "mongoose": "^8.9.0",
+    "next-auth": "5.0.0-beta.25",
+    "zod": "^3.23.8",
+    "react-hook-form": "^7.54.0",
+    "@hookform/resolvers": "^3.9.1",
+    "agenda": "^5.0.0",
+    "argon2": "^0.41.1",
+    "dotenv": "^16.4.7",
+    "nodemailer": "^6.9.16",
+    "lucide-react": "^0.469.0",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/nodemailer": "^6.4.16",
+    "tailwindcss": "^3.4.15",
+    "postcss": "^8.4.49",
+    "autoprefixer": "^10.4.20",
+    "tsx": "^4.19.2"
+  }
+}
