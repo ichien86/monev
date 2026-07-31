@@ -43,7 +43,14 @@ async function connectTo(uriEnvVar: string, cacheKey: "core" | "readmodel"): Pro
         maxPoolSize: 20,
         serverSelectionTimeoutMS: 8000,
       })
-      .asPromise();
+      .asPromise()
+      .catch((error) => {
+        // Jangan cache promise yang reject — kalau tidak, satu kegagalan
+        // koneksi sementara (mis. MongoDB belum siap) akan membuat SEMUA
+        // request berikutnya gagal instan tanpa retry sampai proses restart.
+        slot.promise = null;
+        throw error;
+      });
   }
 
   slot.conn = await slot.promise;
