@@ -19,6 +19,10 @@ const scheduleSchema = new Schema(
     deadlineAt: { type: Date, required: true },
     isLocked: { type: Boolean, default: false },
     lockedAt: { type: Date, default: null },
+    // F-12 — penanda H-3/H-1 mana yang sudah dikirim (mis. [3] atau [3, 1]),
+    // supaya schedule-reminder.job.ts tidak mengirim reminder duplikat kalau
+    // job berjalan lebih dari sekali dalam rentang hari yang sama.
+    remindersSent: { type: [Number], default: [] },
   },
   { timestamps: true }
 );

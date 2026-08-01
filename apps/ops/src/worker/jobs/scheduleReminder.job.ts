@@ -43,6 +43,7 @@ export function defineScheduleReminderJob(agenda: Agenda) {
     for (const schedule of upcoming) {
       const daysLeft = Math.ceil((schedule.deadlineAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
       if (daysLeft !== 3 && daysLeft !== 1) continue; // hanya kirim tepat di penanda H-3/H-1
+      if (schedule.remindersSent?.includes(daysLeft)) continue; // sudah dikirim, jangan duplikat
 
       let label = "";
       let workUnitId: string | null = null;
@@ -75,6 +76,8 @@ export function defineScheduleReminderJob(agenda: Agenda) {
           link: schedule.scope === "pelaporan_indikator" ? "/input-data" : "/tagging",
         });
       }
+
+      await ScheduleModel.updateOne({ _id: schedule._id }, { $addToSet: { remindersSent: daysLeft } });
     }
 
     console.log(`[${SCHEDULE_REMINDER_JOB}] Diproses ${upcoming.length} jadwal mendekati tenggat.`);
