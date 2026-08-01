@@ -1,5 +1,5 @@
 import type Agenda from "agenda";
-import { getSubmissionModel, getUserModel } from "@simonev/db";
+import { getSubmissionModel, getUserModel, getIndicatorModel, getOrgUnitModel } from "@simonev/db";
 import { notify } from "@/lib/notify";
 
 export const ESCALATE_STALE_REVIEWS_JOB = "escalate-stale-reviews";
@@ -25,6 +25,12 @@ export function defineEscalateStaleReviewsJob(agenda: Agenda) {
   agenda.define(ESCALATE_STALE_REVIEWS_JOB, async () => {
     const SubmissionModel = await getSubmissionModel();
     const UserModel = await getUserModel();
+    // Perlu didaftarkan eksplisit di sini -- .populate() di bawah butuh skema
+    // Indicator & OrgUnit sudah terdaftar di koneksi, dan job ini tidak boleh
+    // bergantung pada job LAIN (mis. sync-readmodel) yang kebetulan sudah
+    // mendaftarkannya lebih dulu sebagai efek samping.
+    await getIndicatorModel();
+    await getOrgUnitModel();
 
     const threshold = new Date(Date.now() - AMBANG_HARI * 24 * 60 * 60 * 1000);
     const stale = await SubmissionModel.find({
