@@ -30,7 +30,7 @@ export default async function LaporanPage({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-bg">
-              {["Indikator", "OPD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal"].map((h) => (
+              {["Indikator", "PD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal"].map((h) => (
                 <th key={h} className="text-left px-5 py-2.5 font-mono text-[10px] text-muted uppercase tracking-wide">
                   {h}
                 </th>

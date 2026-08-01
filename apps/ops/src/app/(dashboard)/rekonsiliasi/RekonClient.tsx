@@ -150,7 +150,7 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
                     </div>
                     {siblings.length === 0 ? (
                       <div className="text-[11.5px] text-[#33507A] mt-1.5">
-                        Belum ada OPD lain yang melapor untuk indikator &amp; periode ini.
+                        Belum ada PD lain yang melapor untuk indikator &amp; periode ini.
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1 mt-2">

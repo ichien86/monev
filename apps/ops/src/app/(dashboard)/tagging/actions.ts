@@ -260,7 +260,7 @@ export async function createTagging(input: CreateTaggingInput): Promise<ActionRe
 export async function enterSplitCoverage(input: EnterSplitCoverageInput): Promise<ActionResult> {
   const session = await auth();
   if (session?.user.role !== "pd_opd" || !session.user.workUnitId) {
-    return { ok: false, error: "Hanya operator PD/OPD yang dapat mengentri split cakupan." };
+    return { ok: false, error: "Hanya operator PD yang dapat mengentri split cakupan." };
   }
   const parsed = enterSplitCoverageSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Data tidak valid." };

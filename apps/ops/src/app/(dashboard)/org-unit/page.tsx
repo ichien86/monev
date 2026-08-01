@@ -9,7 +9,7 @@ export default async function OrgUnitPage() {
       <div className="mb-6">
         <h1 className="font-display text-xl font-semibold text-ink">Perangkat Daerah</h1>
         <p className="text-sm text-muted mt-1">
-          Master data OPD & urusan pemerintahan yang diampu (F-10).
+          Master data PD & urusan pemerintahan yang diampu (F-10).
         </p>
       </div>
 

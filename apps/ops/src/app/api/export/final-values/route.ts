@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     .populate("approvedBy", "name")
     .lean();
 
-  const header = ["Indikator", "Satuan", "OPD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal Approve"];
+  const header = ["Indikator", "Satuan", "PD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal Approve"];
   // RFC 4180: bungkus dengan tanda kutip kalau mengandung koma/kutip/baris baru,
   // dan gandakan setiap tanda kutip di dalamnya -- kalau tidak, field yang
   // memuat tanda kutip (mis. nama program berformat "...") merusak kolom

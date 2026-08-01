@@ -31,13 +31,13 @@ export function LaporanFilterBar({ workUnits }: { workUnits: WorkUnitOption[] })
       </label>
       {workUnits.length > 0 && (
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-mono text-muted uppercase tracking-wide">OPD</span>
+          <span className="text-xs font-mono text-muted uppercase tracking-wide">PD</span>
           <select
             value={workUnitId}
             onChange={(e) => setWorkUnitId(e.target.value)}
             className="px-3 py-2 rounded-lg border border-border text-sm"
           >
-            <option value="">Semua OPD</option>
+            <option value="">Semua PD</option>
             {workUnits.map((w) => (
               <option key={w._id} value={w._id}>
                 {w.name}

@@ -36,7 +36,7 @@ export function OrgUnitForm() {
     <form onSubmit={onSubmit} className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-3 mb-6">
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-mono text-muted uppercase tracking-wide">Nama OPD</span>
+          <span className="text-xs font-mono text-muted uppercase tracking-wide">Nama PD</span>
           <input {...register("name")} className="px-3 py-2 rounded-lg border border-border text-sm" />
           {errors.name && <span className="text-xs text-danger">{errors.name.message}</span>}
         </label>

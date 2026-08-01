@@ -17,7 +17,7 @@ import { VALIDATE_EVIDENCE_JOB } from "@/worker/jobs/validateEvidence.job";
 export async function createSubmission(input: CreateSubmissionInput): Promise<ActionResult<{ id: string }>> {
   const session = await auth();
   if (session?.user.role !== "pd_opd" || !session.user.workUnitId) {
-    return { ok: false, error: "Hanya operator PD/OPD yang dapat mengirim submission." };
+    return { ok: false, error: "Hanya operator PD yang dapat mengirim submission." };
   }
 
   const parsed = createSubmissionSchema.safeParse({

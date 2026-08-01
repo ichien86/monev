@@ -155,10 +155,10 @@ export function IndicatorForm({
 
               <div>
                 <span className="text-xs font-mono text-muted uppercase tracking-wide">
-                  OPD Cross-Cutting (F-05, opsional)
+                  PD Cross-Cutting (F-05, opsional)
                 </span>
                 <div className="text-[11px] text-faint mt-0.5 mb-2">
-                  OPD di luar penanggung jawab utama yang juga berhak melapor untuk indikator ini.
+                  PD di luar penanggung jawab utama yang juga berhak melapor untuk indikator ini.
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {orgUnits.map((unit) => (
