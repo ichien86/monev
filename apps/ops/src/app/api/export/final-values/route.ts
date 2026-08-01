@@ -41,6 +41,13 @@ export async function GET(request: NextRequest) {
     .lean();
 
   const header = ["Indikator", "Satuan", "OPD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal Approve"];
+  // RFC 4180: bungkus dengan tanda kutip kalau mengandung koma/kutip/baris baru,
+  // dan gandakan setiap tanda kutip di dalamnya -- kalau tidak, field yang
+  // memuat tanda kutip (mis. nama program berformat "...") merusak kolom
+  // di seluruh baris saat dibuka di Excel/Google Sheets.
+  function escapeCsvCell(value: string): string {
+    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  }
   const csvLines = [header.join(",")];
 
   for (const r of rows) {
@@ -56,8 +63,7 @@ export async function GET(request: NextRequest) {
       approver?.name ?? "",
       new Date(r.approvedAt).toISOString(),
     ];
-    // Escape sederhana: bungkus dengan tanda kutip kalau mengandung koma.
-    csvLines.push(cells.map((c) => (String(c).includes(",") ? `"${c}"` : c)).join(","));
+    csvLines.push(cells.map((c) => escapeCsvCell(String(c))).join(","));
   }
 
   const csv = csvLines.join("\n");
