@@ -60,6 +60,7 @@ export function OrgUnitForm() {
           placeholder="Ketahanan Pangan, Pertanian"
           className="px-3 py-2 rounded-lg border border-border text-sm"
         />
+        {errors.urusan && <span className="text-xs text-danger">{errors.urusan.message}</span>}
       </label>
       {serverError && <div className="text-sm text-danger bg-danger-tint rounded-lg px-3 py-2">{serverError}</div>}
       <button
