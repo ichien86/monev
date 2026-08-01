@@ -52,6 +52,12 @@ export const createIndicatorSchema = z.object({
     .optional(),
   targets: z.array(targetEntrySchema).default([]),
   classificationTags: z.array(z.enum(["IKU", "IKK", "IKD"])).default([]),
+  // Hanya relevan saat calculationMethod === "weighted_sum" -- validasi total
+  // bobot = 100% dilakukan terpisah lewat weightedSumVariablesSchema di Server
+  // Action (bukan di sini, supaya updateIndicatorSchema.partial() tetap valid).
+  variables: z
+    .array(z.object({ variableId: z.string(), weight: z.number().min(0).max(100) }))
+    .default([]),
 });
 
 export type CreateIndicatorInput = z.infer<typeof createIndicatorSchema>;

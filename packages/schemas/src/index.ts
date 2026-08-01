@@ -4,3 +4,4 @@ export * from "./reconciliation.schema";
 export * from "./orgUnit.schema";
 export * from "./tagging.schema";
 export * from "./schedule.schema";
+export * from "./variable.schema";

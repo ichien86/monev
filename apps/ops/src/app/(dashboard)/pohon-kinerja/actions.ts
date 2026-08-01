@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { getIndicatorModel } from "@simonev/db";
-import { createIndicatorSchema, TIER_ORDER, type CreateIndicatorInput } from "@simonev/schemas";
+import {
+  createIndicatorSchema,
+  weightedSumVariablesSchema,
+  TIER_ORDER,
+  type CreateIndicatorInput,
+} from "@simonev/schemas";
 import type { ActionResult } from "@/lib/action-result";
 
 /**
@@ -39,6 +44,13 @@ export async function createIndicator(input: CreateIndicatorInput): Promise<Acti
     }
   } else if (data.tier !== "VISI") {
     return { ok: false, error: "Hanya tingkat VISI yang boleh tanpa induk." };
+  }
+
+  if (data.calculationMethod === "weighted_sum") {
+    const parsedVariables = weightedSumVariablesSchema.safeParse(data.variables);
+    if (!parsedVariables.success) {
+      return { ok: false, error: parsedVariables.error.issues[0]?.message ?? "Data variabel tidak valid." };
+    }
   }
 
   const created = await IndicatorModel.create({

@@ -35,12 +35,14 @@ export function IndicatorForm({
   parentId,
   parentTier,
   orgUnits,
+  variables,
   onClose,
   onCreated,
 }: {
   parentId: string | null;
   parentTier: string | null;
   orgUnits: { _id: string; name: string }[];
+  variables: { _id: string; name: string; unit: string | null }[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -51,6 +53,7 @@ export function IndicatorForm({
     register,
     control,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateIndicatorInput>({
     resolver: zodResolver(createIndicatorSchema),
@@ -65,10 +68,19 @@ export function IndicatorForm({
       targets: [],
       classificationTags: [],
       crossCuttingWorkUnitIds: [],
+      variables: [],
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "targets" });
+  const {
+    fields: variableFields,
+    append: appendVariable,
+    remove: removeVariable,
+  } = useFieldArray({ control, name: "variables" });
+  const calculationMethod = watch("calculationMethod");
+  const selectedVariables = watch("variables");
+  const totalWeight = (selectedVariables ?? []).reduce((sum, v) => sum + (Number(v.weight) || 0), 0);
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
@@ -204,6 +216,67 @@ export function IndicatorForm({
                   ))}
                 </div>
               </div>
+
+              {calculationMethod === "weighted_sum" && (
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-muted uppercase tracking-wide">
+                      Variabel &amp; Bobot (F-01)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => appendVariable({ variableId: variables[0]?._id ?? "", weight: 0 })}
+                      disabled={variables.length === 0}
+                      className="flex items-center gap-1 text-xs font-semibold text-primary disabled:opacity-40"
+                    >
+                      <Plus size={12} /> Tambah
+                    </button>
+                  </div>
+                  {variables.length === 0 ? (
+                    <div className="text-[11.5px] text-faint mt-2">
+                      Belum ada data di Master Variabel — tambahkan dulu di menu &quot;Master
+                      Variabel&quot;.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-2 mt-2">
+                        {variableFields.map((field, index) => (
+                          <div key={field.id} className="flex gap-2">
+                            <select
+                              {...register(`variables.${index}.variableId` as const)}
+                              className="flex-1 px-3 py-2 rounded-lg border border-border text-sm"
+                            >
+                              {variables.map((v) => (
+                                <option key={v._id} value={v._id}>
+                                  {v.name}
+                                  {v.unit ? ` (${v.unit})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="Bobot %"
+                              {...register(`variables.${index}.weight` as const, { valueAsNumber: true })}
+                              className="w-24 px-3 py-2 rounded-lg border border-border text-sm font-mono"
+                            />
+                            <button type="button" onClick={() => removeVariable(index)} aria-label="Hapus">
+                              <Trash2 size={16} className="text-danger" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div
+                        className={`text-xs font-mono mt-2 ${
+                          Math.abs(totalWeight - 100) < 0.01 ? "text-success" : "text-danger"
+                        }`}
+                      >
+                        Total bobot: {totalWeight}% {Math.abs(totalWeight - 100) < 0.01 ? "✓" : "(harus 100%)"}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
 

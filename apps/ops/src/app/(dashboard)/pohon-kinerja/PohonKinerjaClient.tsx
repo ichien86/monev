@@ -15,15 +15,18 @@ type IndicatorNode = {
   children: IndicatorNode[];
 };
 type OrgUnitOption = { _id: string; name: string };
+type VariableOption = { _id: string; name: string; unit: string | null };
 
 export function PohonKinerjaClient({
   tree,
   canEdit,
   orgUnits,
+  variables,
 }: {
   tree: IndicatorNode[];
   canEdit: boolean;
   orgUnits: OrgUnitOption[];
+  variables: VariableOption[];
 }) {
   const router = useRouter();
   const [formTarget, setFormTarget] = useState<{ id: string | null; tier: string | null } | null>(
@@ -53,6 +56,7 @@ export function PohonKinerjaClient({
           parentId={formTarget.id}
           parentTier={formTarget.tier}
           orgUnits={orgUnits}
+          variables={variables}
           onClose={() => setFormTarget(null)}
           onCreated={() => {
             setFormTarget(null);

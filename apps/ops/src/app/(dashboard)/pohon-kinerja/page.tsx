@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { getIndicatorTree } from "./actions";
 import { PohonKinerjaClient } from "./PohonKinerjaClient";
-import { getOrgUnitModel } from "@simonev/db";
+import { getOrgUnitModel, getVariableModel } from "@simonev/db";
 
 export default async function PohonKinerjaPage() {
   const session = await auth();
@@ -10,6 +10,12 @@ export default async function PohonKinerjaPage() {
 
   const OrgUnitModel = await getOrgUnitModel();
   const orgUnits = await OrgUnitModel.find({ isActive: true }).select("name").sort({ name: 1 }).lean();
+
+  const VariableModel = await getVariableModel();
+  const variables = await VariableModel.find({ isActive: true })
+    .select("name unit")
+    .sort({ name: 1 })
+    .lean();
 
   return (
     <div className="p-8 max-w-4xl">
@@ -27,6 +33,7 @@ export default async function PohonKinerjaPage() {
         tree={JSON.parse(JSON.stringify(tree))}
         canEdit={canEdit}
         orgUnits={JSON.parse(JSON.stringify(orgUnits))}
+        variables={JSON.parse(JSON.stringify(variables))}
       />
     </div>
   );

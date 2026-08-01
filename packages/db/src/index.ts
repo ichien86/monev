@@ -9,6 +9,7 @@ export {
   type IndicatorTier,
   type IndicatorDoc,
 } from "./models/Indicator";
+export { getVariableModel, type VariableDoc } from "./models/Variable";
 export { getScheduleModel, type ScheduleDoc } from "./models/Schedule";
 export {
   getSubmissionModel,

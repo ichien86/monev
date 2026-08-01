@@ -76,6 +76,17 @@ const indicatorSchema = new Schema(
       },
     ],
 
+    // Hanya relevan saat calculationMethod === "weighted_sum" (PRD 5.1) --
+    // bobot tiap Variable rujukan, ditegakkan totalnya = 100% di Server Action
+    // (lihat weightedSumVariablesSchema di @simonev/schemas).
+    variables: [
+      {
+        variableId: { type: Schema.Types.ObjectId, ref: "Variable", required: true },
+        weight: { type: Number, required: true, min: 0, max: 100 },
+        _id: false,
+      },
+    ],
+
     // Historical Integrity (PRD 4.1): saat definisi/metode berubah, node lama
     // di-nonaktifkan dan digantikan node baru — bukan di-overwrite.
     isActive: { type: Boolean, default: true },

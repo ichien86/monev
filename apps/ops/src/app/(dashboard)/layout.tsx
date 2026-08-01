@@ -5,6 +5,7 @@ import { NotificationBell } from "./_components/NotificationBell";
 
 const NAV: { href: string; label: string; roles: UserRole[] }[] = [
   { href: "/pohon-kinerja", label: "Pohon Kinerja", roles: ["bapperida", "admin_sistem", "pd_opd"] },
+  { href: "/variabel", label: "Master Variabel", roles: ["bapperida", "admin_sistem"] },
   { href: "/input-data", label: "Input Data & Bukti", roles: ["pd_opd"] },
   { href: "/rekonsiliasi", label: "Rekonsiliasi & Approval", roles: ["bapperida"] },
   { href: "/tagging", label: "Tagging Anggaran Tematik", roles: ["bapperida", "admin_sistem", "pd_opd"] },

@@ -20,6 +20,7 @@ const { auth } = NextAuth(authConfig);
  */
 const ROUTE_ROLES: { prefix: string; roles: UserRole[] }[] = [
   { prefix: "/pohon-kinerja", roles: ["bapperida", "admin_sistem", "pd_opd"] },
+  { prefix: "/variabel", roles: ["bapperida", "admin_sistem"] },
   { prefix: "/org-unit", roles: ["admin_sistem"] },
   { prefix: "/input-data", roles: ["pd_opd"] },
   { prefix: "/rekonsiliasi", roles: ["bapperida"] },
