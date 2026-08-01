@@ -235,6 +235,13 @@ export async function createTagging(input: CreateTaggingInput): Promise<ActionRe
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Data tidak valid." };
 
   const TaggingModel = await getTaggingModel();
+  const existing = await TaggingModel.findOne({
+    themeId: parsed.data.themeId,
+    budgetStructureId: parsed.data.budgetStructureId,
+    budgetYear: parsed.data.budgetYear,
+  }).lean();
+  if (existing) return { ok: false, error: "Node ini sudah ditandai dengan tema tersebut." };
+
   const created = await TaggingModel.create({
     ...parsed.data,
     coveragePercent: null, // selalu null di awal — diisi PD saat realisasi (PRD 5.6)
