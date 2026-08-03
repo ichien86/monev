@@ -3,10 +3,28 @@
  * Dipanggil dari job `validate-extraction` (worker), BUKAN langsung di
  * Server Action, karena OCR berat secara komputasi (lihat catatan di job-nya).
  *
- * CATATAN: fungsi ini belum pernah diuji terhadap dokumen sungguhan di
- * lingkungan pengembangan ini (tidak ada MongoDB nyata ataupun akses berkas
- * bukti sungguhan tersedia di sini — batasan yang sama seperti yang sudah
- * didokumentasikan di README untuk seluruh alur database).
+ * KETERBATASAN DITEMUKAN SAAT QA (belum ada perbaikan yang terbukti andal):
+ * `pdf-parse@1.1.4` membundel pdf.js versi sangat lama (v1.10.100, ~2018)
+ * yang dipaksa jalan tanpa Worker (disableWorker=true, satu-satunya mode
+ * yang bisa jalan di Node). Diuji manual lewat worker Agenda sungguhan:
+ * dokumen valid yang PERTAMA diproses dalam satu proses kadang berhasil
+ * diekstrak, tapi dokumen (bahkan byte identik) yang diproses SETELAHNYA
+ * dalam proses yang sama sering gagal dengan FormatError acak dari pdf.js
+ * ("bad XRef entry", "Invalid number: ...", dst.) -- polanya TIDAK
+ * konsisten (sempat dicoba mitigasi dengan memaksa require.cache dibuang
+ * per panggilan supaya modul pdf.js selalu dimuat ulang segar, tapi itu
+ * TIDAK terbukti memperbaiki keadaan pada pengujian ulang, jadi tidak
+ * dipertahankan). Kemungkinan besar ini bug/keterbatasan pdf.js versi lama
+ * itu sendiri saat dipaksa jalan di luar Web Worker, bukan sesuatu yang bisa
+ * diperbaiki dari sisi pemanggil. Perbaikan yang tepat adalah mengganti
+ * pdf-parse dengan library aktif (mis. panggil `pdfjs-dist` versi modern
+ * langsung) -- keputusan dependency yang di luar cakupan QA ini. Sampai itu
+ * dilakukan, `outcome: "failed"` pada dokumen PDF yang sebenarnya valid HARUS
+ * dianggap kemungkinan besar palsu (false negative dari library, bukan
+ * dokumen yang benar-benar rusak) -- karena itu alur DDT v2.0 3.4 sendiri
+ * memang sudah dirancang untuk tidak memblokir PD tanpa batas waktu kalau
+ * ekstraksi gagal (status `ditandai_gagal_ekstrak`, tetap masuk antrean
+ * review Admin Perencana, bukan ditolak).
  */
 import pdfParse from "pdf-parse";
 import { createWorker } from "tesseract.js";
