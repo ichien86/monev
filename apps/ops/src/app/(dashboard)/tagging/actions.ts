@@ -1,6 +1,7 @@
 "use server";
 
 import ExcelJS from "exceljs";
+import type { Types } from "mongoose";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import {
@@ -96,6 +97,7 @@ export async function importBudgetStructure(
     const levelRows = rows.filter((r) => r.level === level);
     for (const row of levelRows) {
       let parentId = null;
+      let path: Types.ObjectId[] = [];
       if (row.parentSipdCode) {
         const parent = await BudgetStructureModel.findOne({
           sipdCode: row.parentSipdCode,
@@ -108,6 +110,13 @@ export async function importBudgetStructure(
           };
         }
         parentId = parent._id;
+        // `path` dihitung manual di sini (bukan mengandalkan pre("save") hook
+        // di BudgetStructure.ts) -- upsert di bawah memakai findOneAndUpdate,
+        // yaitu query middleware yang TIDAK memicu document middleware
+        // pre("save") sama sekali, jadi path akan selalu kosong kalau tidak
+        // diisi eksplisit di sini (baris di atasnya diproses level-by-level,
+        // jadi induk sudah pasti sudah ter-upsert lebih dulu di loop ini).
+        path = [...(parent.path ?? []), parent._id];
       }
 
       // F-09 — bandingkan dengan tahun sebelumnya, kode SIPD yang sama.
@@ -159,6 +168,7 @@ export async function importBudgetStructure(
           level: row.level,
           sipdCode: row.sipdCode,
           parentId,
+          path,
           name: row.name,
           budgetYear,
           pagu: row.pagu,
@@ -592,6 +602,16 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
     return result;
   }
 
+  type SubkegiatanTag = {
+    taggingId: string;
+    themeId: string;
+    themeName: string;
+    colorHex: string;
+    coverage: "penuh" | "sebagian";
+    allocatedCount: number;
+    allocatedTotal: number;
+  };
+
   type Node = {
     _id: string;
     level: string;
@@ -601,6 +621,7 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
     ownerWorkUnitId: string | null;
     children: Node[];
     tags?: EffectiveTag[];
+    subkegiatanTags?: SubkegiatanTag[];
   };
 
   const childCounts = new Map<string, number>();
@@ -609,6 +630,30 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
       const key = s.parentId.toString();
       childCounts.set(key, (childCounts.get(key) ?? 0) + 1);
     }
+  }
+
+  // Tag yang melekat LANGSUNG ke subkegiatan itu sendiri (bukan hasil cascade
+  // ke rekening lewat effectiveTagsFor) -- dipakai supaya PD punya titik masuk
+  // untuk mengisi alokasi pertama kali pada tag coverage="sebagian" yang
+  // partialAllocations-nya masih kosong (tidak akan pernah muncul di leaf
+  // manapun sampai ada alokasi, jadi harus terlihat di level subkegiatan).
+  function subkegiatanTagsFor(subkegiatanId: string): SubkegiatanTag[] {
+    const tags = taggingsByStructureId.get(subkegiatanId) ?? [];
+    const result: SubkegiatanTag[] = [];
+    for (const tag of tags) {
+      const theme = themeById.get(tag.themeId.toString());
+      if (!theme) continue;
+      result.push({
+        taggingId: tag._id.toString(),
+        themeId: tag.themeId.toString(),
+        themeName: theme.name,
+        colorHex: theme.colorHex,
+        coverage: tag.coverage,
+        allocatedCount: tag.partialAllocations.length,
+        allocatedTotal: tag.partialAllocations.reduce((sum, a) => sum + a.amountRupiah, 0),
+      });
+    }
+    return result;
   }
 
   const nodesById = new Map<string, Node>();
@@ -623,6 +668,7 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
       ownerWorkUnitId: s.ownerWorkUnitId?.toString() ?? null,
       children: [],
       tags: isLeaf ? effectiveTagsFor(s._id.toString(), (s.path ?? []).map(String)) : undefined,
+      subkegiatanTags: s.level === "subkegiatan" ? subkegiatanTagsFor(s._id.toString()) : undefined,
     });
   }
 

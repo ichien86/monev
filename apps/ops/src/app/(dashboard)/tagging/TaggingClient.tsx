@@ -20,6 +20,15 @@ type EffectiveTag = {
   amountRupiah: number | null;
   inheritedFromName: string | null;
 };
+type SubkegiatanTag = {
+  taggingId: string;
+  themeId: string;
+  themeName: string;
+  colorHex: string;
+  coverage: "penuh" | "sebagian";
+  allocatedCount: number;
+  allocatedTotal: number;
+};
 type BudgetNode = {
   _id: string;
   level: string;
@@ -29,12 +38,14 @@ type BudgetNode = {
   ownerWorkUnitId: string | null;
   children: BudgetNode[];
   tags?: EffectiveTag[];
+  subkegiatanTags?: SubkegiatanTag[];
 };
 
 function filterTreeByTema(nodes: BudgetNode[], active: Set<string>): BudgetNode[] {
   return nodes.map((n) => ({
     ...n,
     tags: n.tags?.filter((t) => active.has(t.themeId)),
+    subkegiatanTags: n.subkegiatanTags?.filter((t) => active.has(t.themeId)),
     children: filterTreeByTema(n.children, active),
   }));
 }

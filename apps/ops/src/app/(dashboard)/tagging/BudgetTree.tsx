@@ -13,6 +13,16 @@ type EffectiveTag = {
   inheritedFromName: string | null;
 };
 
+type SubkegiatanTag = {
+  taggingId: string;
+  themeId: string;
+  themeName: string;
+  colorHex: string;
+  coverage: "penuh" | "sebagian";
+  allocatedCount: number;
+  allocatedTotal: number;
+};
+
 type BudgetNode = {
   _id: string;
   level: string;
@@ -22,6 +32,7 @@ type BudgetNode = {
   ownerWorkUnitId: string | null;
   children: BudgetNode[];
   tags?: EffectiveTag[];
+  subkegiatanTags?: SubkegiatanTag[];
 };
 
 function rp(n: number) {
@@ -46,12 +57,15 @@ function Node({
   depth: number;
   myWorkUnitId: string | null;
   onTagNode: (node: BudgetNode) => void;
-  onEditAllocation: (node: BudgetNode, tag: EffectiveTag) => void;
+  onEditAllocation: (node: BudgetNode, tag: { taggingId: string; themeName: string }) => void;
 }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
   const isLeaf = !hasChildren;
-  const isMine = Boolean(isLeaf && myWorkUnitId && node.ownerWorkUnitId === myWorkUnitId);
+  // Subkegiatan dihitung "milik saya" juga (bukan cuma leaf/rekening) --
+  // supaya PD punya titik masuk mengisi alokasi PERTAMA KALI lewat baris
+  // subkegiatan-nya sendiri, lihat blok subkegiatanTags di bawah.
+  const isMine = Boolean(myWorkUnitId && node.ownerWorkUnitId === myWorkUnitId);
   // DDT v2.0 Section 2.7 — Tagging SELALU dibuat di level subkegiatan.
   const canTag = node.level === "subkegiatan";
 
@@ -118,6 +132,27 @@ function Node({
         </div>
       )}
 
+      {node.subkegiatanTags && node.subkegiatanTags.length > 0 && (
+        <div className="ml-9 mb-3 flex flex-col gap-1.5">
+          {node.subkegiatanTags.map((t) => (
+            <div key={t.taggingId} className="flex flex-wrap items-center gap-2 text-[11.5px]">
+              <span className="w-2 h-2 rounded-full inline-block" style={{ background: t.colorHex }} />
+              <span className="font-semibold text-ink">{t.themeName}</span>
+              <span className="font-mono text-muted">
+                {t.coverage === "penuh"
+                  ? "Cakupan: Seluruh anggaran"
+                  : `Cakupan: ${t.allocatedCount} rekening dialokasikan · ${rp(t.allocatedTotal)}`}
+              </span>
+              {isMine && t.coverage === "sebagian" && (
+                <button onClick={() => onEditAllocation(node, t)} className="text-primary font-semibold">
+                  {t.allocatedCount === 0 ? "Isi Alokasi" : "Ubah Alokasi"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {hasChildren && open && (
         <div style={{ marginLeft: depth > 0 ? 23 : 14 }}>
           {node.children.map((child) => (
@@ -145,7 +180,7 @@ export function BudgetTree({
   tree: BudgetNode[];
   myWorkUnitId: string | null;
   onTagNode: (node: BudgetNode) => void;
-  onEditAllocation: (node: BudgetNode, tag: EffectiveTag) => void;
+  onEditAllocation: (node: BudgetNode, tag: { taggingId: string; themeName: string }) => void;
 }) {
   if (tree.length === 0) {
     return <div className="text-sm text-faint py-8 text-center">Belum ada struktur anggaran untuk tahun ini.</div>;
