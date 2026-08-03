@@ -7,7 +7,7 @@ async function loginAction(formData: FormData) {
   const callbackUrl = (formData.get("callbackUrl") as string) || "/";
   try {
     await signIn("credentials", {
-      email: formData.get("email"),
+      username: formData.get("username"),
       password: formData.get("password"),
       redirectTo: callbackUrl,
     });
@@ -34,17 +34,17 @@ export default async function LoginPage({
 
         {params.error && (
           <p className="mt-4 text-sm text-danger bg-danger-tint rounded-lg px-3 py-2">
-            Email atau kata sandi salah.
+            Username atau kata sandi salah.
           </p>
         )}
 
         <form action={loginAction} className="mt-6 flex flex-col gap-4">
           <input type="hidden" name="callbackUrl" value={params.callbackUrl ?? "/"} />
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-mono text-muted uppercase tracking-wide">Email</span>
+            <span className="text-xs font-mono text-muted uppercase tracking-wide">Username</span>
             <input
-              name="email"
-              type="email"
+              name="username"
+              type="text"
               required
               className="px-3 py-2 rounded-lg border border-border text-sm"
             />

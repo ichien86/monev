@@ -28,6 +28,7 @@ const ROUTE_ROLES: { prefix: string; roles: UserRole[] }[] = [
   { prefix: "/jadwal", roles: ["bapperida", "admin_sistem"] },
   { prefix: "/simulasi", roles: ["bapperida", "admin_sistem"] },
   { prefix: "/laporan", roles: ["bapperida", "admin_sistem", "pd_opd"] },
+  { prefix: "/pengaturan", roles: ["admin_sistem"] },
 ];
 
 export default auth((req) => {

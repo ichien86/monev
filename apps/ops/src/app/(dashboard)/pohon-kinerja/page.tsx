@@ -1,21 +1,19 @@
 import { auth } from "@/auth";
-import { getIndicatorTree } from "./actions";
+import { getIndicatorTree, listVariablesForFormula, listBudgetProgramsForYear } from "./actions";
 import { PohonKinerjaClient } from "./PohonKinerjaClient";
-import { getOrgUnitModel, getVariableModel } from "@simonev/db";
+import { getOrgUnitModel } from "@simonev/db";
 
 export default async function PohonKinerjaPage() {
   const session = await auth();
-  const tree = await getIndicatorTree();
+  const [tree, variables, budgetPrograms] = await Promise.all([
+    getIndicatorTree(),
+    listVariablesForFormula(),
+    listBudgetProgramsForYear(),
+  ]);
   const canEdit = session?.user.role === "bapperida" || session?.user.role === "admin_sistem";
 
   const OrgUnitModel = await getOrgUnitModel();
   const orgUnits = await OrgUnitModel.find({ isActive: true }).select("name").sort({ name: 1 }).lean();
-
-  const VariableModel = await getVariableModel();
-  const variables = await VariableModel.find({ isActive: true })
-    .select("name unit")
-    .sort({ name: 1 })
-    .lean();
 
   return (
     <div className="p-8 max-w-4xl">
@@ -34,6 +32,7 @@ export default async function PohonKinerjaPage() {
         canEdit={canEdit}
         orgUnits={JSON.parse(JSON.stringify(orgUnits))}
         variables={JSON.parse(JSON.stringify(variables))}
+        budgetPrograms={JSON.parse(JSON.stringify(budgetPrograms))}
       />
     </div>
   );

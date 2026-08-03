@@ -5,7 +5,7 @@ import { NotificationBell } from "./_components/NotificationBell";
 
 const NAV: { href: string; label: string; roles: UserRole[] }[] = [
   { href: "/pohon-kinerja", label: "Pohon Kinerja", roles: ["bapperida", "admin_sistem", "pd_opd"] },
-  { href: "/variabel", label: "Master Variabel", roles: ["bapperida", "admin_sistem"] },
+  { href: "/variabel", label: "Master Data Variabel", roles: ["bapperida", "admin_sistem"] },
   { href: "/input-data", label: "Input Data & Bukti", roles: ["pd_opd"] },
   { href: "/rekonsiliasi", label: "Rekonsiliasi & Approval", roles: ["bapperida"] },
   { href: "/tagging", label: "Tagging Anggaran Tematik", roles: ["bapperida", "admin_sistem", "pd_opd"] },
@@ -13,6 +13,7 @@ const NAV: { href: string; label: string; roles: UserRole[] }[] = [
   { href: "/simulasi", label: "Simulasi What-If", roles: ["bapperida", "admin_sistem"] },
   { href: "/laporan", label: "Tabel Data & Ekspor", roles: ["bapperida", "admin_sistem", "pd_opd"] },
   { href: "/org-unit", label: "Perangkat Daerah", roles: ["admin_sistem"] },
+  { href: "/pengaturan", label: "Pengaturan Sistem", roles: ["admin_sistem"] },
 ];
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </nav>
         <div className="px-5 py-4 border-t border-white/10">
           <div className="text-xs text-white/70">{session?.user.name}</div>
+          <div className="text-[10px] font-mono text-white/40 mt-0.5">@{session?.user.username}</div>
           <div className="text-[10px] font-mono text-white/40 uppercase mt-0.5">{role}</div>
           <form
             action={async () => {

@@ -6,7 +6,7 @@ async function loginAction(formData: FormData) {
   "use server";
   try {
     await signIn("credentials", {
-      email: formData.get("email"),
+      username: formData.get("username"),
       password: formData.get("password"),
       redirectTo: "/",
     });
@@ -33,14 +33,14 @@ export default async function LoginPage({
 
         {params.error && (
           <p className="mt-4 text-sm text-danger bg-danger-tint rounded-lg px-3 py-2">
-            Email/kata sandi salah, atau akun Anda bukan akun Pimpinan Daerah.
+            Username/kata sandi salah, atau akun Anda bukan akun Pimpinan Daerah.
           </p>
         )}
 
         <form action={loginAction} className="mt-6 flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-mono text-muted uppercase tracking-wide">Email</span>
-            <input name="email" type="email" required className="px-3 py-2 rounded-lg border border-border text-sm" />
+            <span className="text-xs font-mono text-muted uppercase tracking-wide">Username</span>
+            <input name="username" type="text" required className="px-3 py-2 rounded-lg border border-border text-sm" />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-mono text-muted uppercase tracking-wide">Kata Sandi</span>

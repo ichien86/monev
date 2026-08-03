@@ -2,16 +2,19 @@ import { Schema, type InferSchemaType, type Connection, type Model } from "mongo
 import { connectCore } from "../connection";
 
 /**
- * Log audit terpisah dari FinalValue (PRD 5.4) — sengaja tabel/koleksi
- * berbeda, bukan sub-array di dalam FinalValue, supaya riwayat tidak pernah
- * bisa "hilang" akibat operasi yang menyentuh dokumen FinalValue itu sendiri.
+ * Log audit terpisah dari VariableFinalValue (PRD 5.4) — sengaja tabel/
+ * koleksi berbeda, bukan sub-array di dalam VariableFinalValue, supaya
+ * riwayat tidak pernah bisa "hilang" akibat operasi yang menyentuh dokumen
+ * VariableFinalValue itu sendiri.
  *
- * Ditulis SELALU dalam satu transaksi MongoDB bersama perubahan FinalValue
- * (lihat DDT Section 6.2 dan Server Action overrideFinalValue).
+ * Ditulis SELALU dalam satu transaksi MongoDB bersama perubahan
+ * VariableFinalValue (lihat DDT v2.0 Section 3.1 dan Server Action
+ * overrideVariableFinalValue). DDT v2.0 — mengacu ke VariableFinalValue
+ * (bukan FinalValue level-indikator lagi, lihat DDT v2.0 Section 2.3–2.4).
  */
 const auditLogSchema = new Schema(
   {
-    finalValueId: { type: Schema.Types.ObjectId, ref: "FinalValue", required: true },
+    variableFinalValueId: { type: Schema.Types.ObjectId, ref: "VariableFinalValue", required: true },
     action: { type: String, enum: ["approve", "override"], required: true },
 
     previousValue: { type: String, default: null }, // null untuk action "approve" pertama kali
@@ -28,7 +31,7 @@ const auditLogSchema = new Schema(
   { timestamps: true }
 );
 
-auditLogSchema.index({ finalValueId: 1, performedAt: -1 });
+auditLogSchema.index({ variableFinalValueId: 1, performedAt: -1 });
 
 export type AuditLogDoc = InferSchemaType<typeof auditLogSchema>;
 

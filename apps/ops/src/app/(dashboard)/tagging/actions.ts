@@ -8,22 +8,23 @@ import {
   getBudgetStructureModel,
   getTaggingModel,
   getOrgUnitModel,
-  getScheduleModel,
   getSipdNomenclatureChangeModel,
+  getUserModel,
 } from "@simonev/db";
 import {
   createThemeSchema,
   importBudgetStructureSchema,
   createTaggingSchema,
-  enterSplitCoverageSchema,
+  setPartialAllocationsSchema,
   type CreateThemeInput,
   type ImportBudgetStructureInput,
   type CreateTaggingInput,
-  type EnterSplitCoverageInput,
+  type SetPartialAllocationsInput,
 } from "@simonev/schemas";
 import type { ActionResult } from "@/lib/action-result";
 import { agenda } from "@/worker/agenda";
 import { SYNC_READMODEL_JOB } from "@/worker/jobs/syncReadmodel.job";
+import { notify } from "@/lib/notify";
 
 function requireTaggingManager(role: string | undefined) {
   return role === "bapperida" || role === "admin_sistem";
@@ -56,12 +57,13 @@ export async function listThemes() {
 /* ---------------------------- Impor Struktur SIPD ------------------------- */
 
 /**
- * F-02 prasyarat (PRD 5.6): "harus dilakukan import data dari SIPD mengenai
- * anggaran sampai dengan rekening belanja sebelum proses tagging". Dibangun
- * multi-pass per level (program → kegiatan → subkegiatan) karena
- * BudgetStructure butuh `parentId` (ObjectId), sedangkan baris impor hanya
- * berisi `parentSipdCode` (string) — resolusi kode→ObjectId hanya bisa
- * dilakukan setelah level induknya benar-benar tersimpan.
+ * DDT v2.0 Section 2.6/3.6 — impor Laporan Realisasi granularitas Rekening
+ * (mengganti impor SIPD level-Program v1.0). Mengisi `pagu`+`realisasi`
+ * sekaligus per baris, sampai level `program`→`kegiatan`→`subkegiatan`→
+ * `rekening`. Sub-SKPD dalam file sumber SENGAJA diabaikan sebagai level
+ * terpisah — baris dengan Sub-SKPD tetap dipetakan ke `ownerWorkUnitId` PD
+ * induknya lewat kolom Kode SKPD (bukan Kode Sub SKPD). Kolom Fungsi/Sub
+ * Fungsi diabaikan sepenuhnya (tidak dipetakan ke field apa pun).
  */
 export async function importBudgetStructure(
   input: ImportBudgetStructureInput
@@ -89,7 +91,8 @@ export async function importBudgetStructure(
   const previousBySipd = new Map(previousYearStructures.map((s) => [s.sipdCode, s]));
 
   let imported = 0;
-  for (const level of ["program", "kegiatan", "subkegiatan"] as const) {
+  const changedRekeningSipdCodes = new Set<string>();
+  for (const level of ["program", "kegiatan", "subkegiatan", "rekening"] as const) {
     const levelRows = rows.filter((r) => r.level === level);
     for (const row of levelRows) {
       let parentId = null;
@@ -138,6 +141,18 @@ export async function importBudgetStructure(
         }
       }
 
+      // DDT v2.0 3.6 langkah 4 — tangkap realisasi LAMA (sebelum ditimpa)
+      // untuk rekening yang berubah, dipakai trigger notifikasi tagging di
+      // bawah setelah seluruh baris tahun ini tersimpan.
+      if (row.level === "rekening") {
+        const existing = await BudgetStructureModel.findOne({ sipdCode: row.sipdCode, budgetYear })
+          .select("realisasi")
+          .lean();
+        if (existing && existing.realisasi !== row.realisasi) {
+          changedRekeningSipdCodes.add(row.sipdCode);
+        }
+      }
+
       await BudgetStructureModel.findOneAndUpdate(
         { sipdCode: row.sipdCode, budgetYear },
         {
@@ -147,6 +162,8 @@ export async function importBudgetStructure(
           name: row.name,
           budgetYear,
           pagu: row.pagu,
+          realisasi: row.realisasi,
+          realisasiUpdatedAt: new Date(),
           ownerWorkUnitId: row.ownerWorkUnitSipdCode
             ? orgUnitsBySipd.get(row.ownerWorkUnitSipdCode) ?? null
             : null,
@@ -157,16 +174,79 @@ export async function importBudgetStructure(
     }
   }
 
+  if (changedRekeningSipdCodes.size > 0) {
+    await notifyTaggedRekeningOnRealisasiChange(budgetYear, changedRekeningSipdCodes);
+  }
+
   await agenda.now(SYNC_READMODEL_JOB, {});
   revalidatePath("/tagging");
   return { ok: true, data: { imported } };
 }
 
 /**
+ * DDT v2.0 Section 3.6 langkah 4 — setelah impor selesai, untuk tiap
+ * rekening yang REALISASI-nya berubah dan muncul di `Tagging.partialAllocations`
+ * manapun, kirim notify() ke seluruh pengguna aktif PD pengampu subkegiatan
+ * terkait.
+ */
+async function notifyTaggedRekeningOnRealisasiChange(budgetYear: number, changedSipdCodes: Set<string>) {
+  const TaggingModel = await getTaggingModel();
+  const BudgetStructureModel = await getBudgetStructureModel();
+  const UserModel = await getUserModel();
+
+  const changedRekening = await BudgetStructureModel.find({
+    budgetYear,
+    level: "rekening",
+    sipdCode: { $in: Array.from(changedSipdCodes) },
+  })
+    .select("ownerWorkUnitId name realisasi")
+    .lean();
+  if (changedRekening.length === 0) return;
+  const changedRekeningIds = new Set(changedRekening.map((r) => r._id.toString()));
+
+  const taggings = await TaggingModel.find({
+    budgetYear,
+    coverage: "sebagian",
+    "partialAllocations.rekeningStructureId": { $in: Array.from(changedRekeningIds) },
+  })
+    .populate("themeId", "name")
+    .lean();
+  if (taggings.length === 0) return;
+
+  const rekeningById = new Map(changedRekening.map((r) => [r._id.toString(), r]));
+  const notifiedPerRekening = new Set<string>();
+
+  for (const tag of taggings) {
+    for (const allocation of tag.partialAllocations) {
+      const rekeningId = allocation.rekeningStructureId.toString();
+      if (!changedRekeningIds.has(rekeningId) || notifiedPerRekening.has(rekeningId)) continue;
+      const rekening = rekeningById.get(rekeningId);
+      if (!rekening?.ownerWorkUnitId) continue;
+      notifiedPerRekening.add(rekeningId);
+
+      const recipients = await UserModel.find({ workUnitId: rekening.ownerWorkUnitId, isActive: true })
+        .select("_id")
+        .lean();
+      for (const recipient of recipients) {
+        await notify({
+          userId: recipient._id.toString(),
+          type: "info",
+          title: "Realisasi rekening ter-tag diperbarui",
+          message: `Realisasi "${rekening.name}" (ter-tag tema "${(tag.themeId as any)?.name ?? "?"}") diperbarui menjadi Rp ${rekening.realisasi.toLocaleString("id-ID")}.`,
+          link: "/tagging",
+        });
+      }
+    }
+  }
+}
+
+/**
  * Impor SIPD dari file Excel sungguhan (.xlsx) — pelengkap `importBudgetStructure`
- * di atas (yang menerima baris terstruktur/JSON). Format kolom yang diharapkan
- * pada baris header (case-insensitive): Level | Kode SIPD | Kode Induk | Nama |
- * Pagu | Kode SIPD OPD. Baris pertama SELALU dianggap header dan dilewati.
+ * di atas (yang menerima baris terstruktur/JSON). Format kolom yang
+ * diharapkan pada baris header (case-insensitive): Level | Kode SIPD | Kode
+ * Induk | Nama | Pagu | Realisasi | Kode SKPD. Baris pertama SELALU
+ * dianggap header dan dilewati. Kolom Fungsi/Sub Fungsi (jika ada di file
+ * sumber Laporan Realisasi) TIDAK dipetakan — diabaikan sepenuhnya.
  */
 export async function importBudgetStructureFromExcel(formData: FormData): Promise<ActionResult<{ imported: number }>> {
   const session = await auth();
@@ -193,28 +273,31 @@ export async function importBudgetStructureFromExcel(formData: FormData): Promis
   if (!sheet) return { ok: false, error: "File Excel tidak berisi sheet apa pun." };
 
   const rows: {
-    level: "program" | "kegiatan" | "subkegiatan";
+    level: "program" | "kegiatan" | "subkegiatan" | "rekening";
     sipdCode: string;
     parentSipdCode: string | null;
     name: string;
     pagu: number;
+    realisasi: number;
     ownerWorkUnitSipdCode: string | null;
   }[] = [];
 
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return; // lewati header
-    const [, levelRaw, sipdCode, parentSipdCode, name, paguRaw, ownerSipdCode] = row.values as unknown[];
+    const [, levelRaw, sipdCode, parentSipdCode, name, paguRaw, realisasiRaw, ownerSipdCode] =
+      row.values as unknown[];
     if (!sipdCode || !name) return; // baris kosong/pemisah, lewati
 
     const level = String(levelRaw ?? "").trim().toLowerCase();
-    if (level !== "program" && level !== "kegiatan" && level !== "subkegiatan") return;
+    if (!["program", "kegiatan", "subkegiatan", "rekening"].includes(level)) return;
 
     rows.push({
-      level,
+      level: level as "program" | "kegiatan" | "subkegiatan" | "rekening",
       sipdCode: String(sipdCode).trim(),
       parentSipdCode: parentSipdCode ? String(parentSipdCode).trim() : null,
       name: String(name).trim(),
       pagu: Number(paguRaw) || 0,
+      realisasi: Number(realisasiRaw) || 0,
       ownerWorkUnitSipdCode: ownerSipdCode ? String(ownerSipdCode).trim() : null,
     });
   });
@@ -244,7 +327,7 @@ export async function createTagging(input: CreateTaggingInput): Promise<ActionRe
 
   const created = await TaggingModel.create({
     ...parsed.data,
-    coveragePercent: null, // selalu null di awal — diisi PD saat realisasi (PRD 5.6)
+    partialAllocations: [],
     createdBy: session!.user.id,
   });
   await agenda.now(SYNC_READMODEL_JOB, {});
@@ -253,16 +336,16 @@ export async function createTagging(input: CreateTaggingInput): Promise<ActionRe
 }
 
 /**
- * F-02 (PRD 5.6): "yang entri Perangkat Daerah (PD)... per tagging dipisahkan
- * prosesnya". PD hanya boleh mengisi split untuk subkegiatan milik OPD-nya
- * sendiri — dicek lewat BudgetStructure.ownerWorkUnitId.
+ * DDT v2.0 Section 2.7 — menggantikan enterSplitCoverage (persentase
+ * tunggal, v1.0). PD hanya boleh mengisi alokasi untuk rekening di bawah
+ * subkegiatan milik OPD-nya sendiri — dicek lewat BudgetStructure.ownerWorkUnitId.
  */
-export async function enterSplitCoverage(input: EnterSplitCoverageInput): Promise<ActionResult> {
+export async function setPartialAllocations(input: SetPartialAllocationsInput): Promise<ActionResult> {
   const session = await auth();
   if (session?.user.role !== "pd_opd" || !session.user.workUnitId) {
-    return { ok: false, error: "Hanya operator PD yang dapat mengentri split cakupan." };
+    return { ok: false, error: "Hanya operator PD yang dapat mengentri alokasi rekening." };
   }
-  const parsed = enterSplitCoverageSchema.safeParse(input);
+  const parsed = setPartialAllocationsSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Data tidak valid." };
 
   const TaggingModel = await getTaggingModel();
@@ -275,25 +358,25 @@ export async function enterSplitCoverage(input: EnterSplitCoverageInput): Promis
 
   const structure = await BudgetStructureModel.findById(tagging.budgetStructureId).lean();
   if (!structure || String(structure.ownerWorkUnitId) !== session.user.workUnitId) {
-    return { ok: false, error: "Anda tidak berwenang mengentri split untuk struktur anggaran ini." };
+    return { ok: false, error: "Anda tidak berwenang mengentri alokasi untuk struktur anggaran ini." };
   }
 
-  const ScheduleModel = await getScheduleModel();
-  const lockedSchedule = await ScheduleModel.findOne({
-    scope: "entri_split_tagging",
-    refId: tagging._id,
-    isLocked: true,
-  }).lean();
-  if (lockedSchedule) {
-    return {
-      ok: false,
-      error: "Jadwal entri split untuk tagging ini sudah terkunci (F-03) dan tidak dapat diubah.",
-    };
+  const rekeningIds = parsed.data.allocations.map((a) => a.rekeningStructureId);
+  const rekeningCount = await BudgetStructureModel.countDocuments({
+    _id: { $in: rekeningIds },
+    level: "rekening",
+    parentId: tagging.budgetStructureId,
+  });
+  if (rekeningCount !== rekeningIds.length) {
+    return { ok: false, error: "Salah satu rekening tidak ditemukan di bawah subkegiatan ini." };
   }
 
-  tagging.coveragePercent = parsed.data.coveragePercent;
-  tagging.splitEnteredBy = session.user.id as any;
-  tagging.splitEnteredAt = new Date();
+  tagging.partialAllocations = parsed.data.allocations.map((a) => ({
+    rekeningStructureId: a.rekeningStructureId as any,
+    amountRupiah: a.amountRupiah,
+    lastConfirmedBy: session.user.id as any,
+    lastConfirmedAt: new Date(),
+  }));
   await tagging.save();
 
   await agenda.now(SYNC_READMODEL_JOB, {});
@@ -302,11 +385,12 @@ export async function enterSplitCoverage(input: EnterSplitCoverageInput): Promis
 }
 
 /**
- * Data contoh — BUKAN pengganti impor SIPD sungguhan. Memakai baris program
- * riil dari Tabel IV.1 RPJMD Kabupaten Boyolali 2025–2029 (pagu indikatif
- * 2026) supaya modul ini langsung punya isi yang bermakna untuk demo/dev,
- * konsisten dengan seed script F-01. Untuk produksi, gunakan
- * `importBudgetStructure` dengan hasil parsing Excel SIPD sungguhan.
+ * Data contoh — BUKAN pengganti impor realisasi sungguhan. Memakai baris
+ * program riil dari Tabel IV.1 RPJMD Kabupaten Boyolali 2025–2029 (pagu
+ * indikatif 2026) supaya modul ini langsung punya isi yang bermakna untuk
+ * demo/dev, konsisten dengan seed script F-01. Untuk produksi, gunakan
+ * `importBudgetStructure` dengan hasil parsing Excel Laporan Realisasi
+ * sungguhan.
  */
 export async function seedExampleBudgetStructure(budgetYear: number): Promise<ActionResult<{ imported: number }>> {
   const OrgUnitModel = await getOrgUnitModel();
@@ -323,6 +407,7 @@ export async function seedExampleBudgetStructure(budgetYear: number): Promise<Ac
         parentSipdCode: null,
         name: "Program Pemenuhan Upaya Kesehatan Perorangan dan Upaya Kesehatan Masyarakat",
         pagu: 145098623382,
+        realisasi: 0,
         ownerWorkUnitSipdCode: dinkes?.sipdCode ?? null,
       },
       {
@@ -331,6 +416,7 @@ export async function seedExampleBudgetStructure(budgetYear: number): Promise<Ac
         parentSipdCode: null,
         name: "Program Perlindungan dan Jaminan Sosial",
         pagu: 5803250000,
+        realisasi: 0,
         ownerWorkUnitSipdCode: dinsos?.sipdCode ?? null,
       },
       {
@@ -339,6 +425,7 @@ export async function seedExampleBudgetStructure(budgetYear: number): Promise<Ac
         parentSipdCode: null,
         name: "Program Peningkatan Diversifikasi dan Ketahanan Pangan Masyarakat",
         pagu: 1104672000,
+        realisasi: 0,
         ownerWorkUnitSipdCode: dkp?.sipdCode ?? null,
       },
       {
@@ -347,6 +434,7 @@ export async function seedExampleBudgetStructure(budgetYear: number): Promise<Ac
         parentSipdCode: null,
         name: "Program Pengawasan Keamanan Pangan",
         pagu: 111000000,
+        realisasi: 0,
         ownerWorkUnitSipdCode: dkp?.sipdCode ?? null,
       },
     ],
@@ -354,12 +442,12 @@ export async function seedExampleBudgetStructure(budgetYear: number): Promise<Ac
 }
 
 /**
- * F-02 — copy-advice antar tahun (PRD 5.6): mencocokkan struktur tahun
- * sebelumnya dengan tahun berjalan BERBASIS KODE SIPD (bukan kemiripan nama).
- * Item dengan kode yang cocok DAN punya anggaran di tahun berjalan → auto-copy
- * tagging-nya. Item yang kodenya tidak ditemukan di tahun berjalan → tidak
- * disalin, harus ditag manual (dikembalikan di `unmatched` untuk ditampilkan
- * sebagai peringatan di UI).
+ * F-02 — copy-advice antar tahun (PRD 5.6, DDT v2.0 Section 2.7): mencocokkan
+ * struktur tahun sebelumnya dengan tahun berjalan BERBASIS KODE SIPD. Item
+ * dengan kode yang cocok DAN punya anggaran di tahun berjalan → auto-copy
+ * tagging-nya. `partialAllocations` TIDAK ikut disalin — wajib dientri ulang
+ * PD di tahun baru (nominal Rupiah tahun lalu tidak relevan untuk pagu/
+ * realisasi tahun baru).
  */
 export async function copyTaggingsFromPreviousYear(
   fromYear: number,
@@ -402,8 +490,7 @@ export async function copyTaggingsFromPreviousYear(
         budgetStructureId: currStructure._id,
         budgetYear: toYear,
         coverage: tag.coverage,
-        coveragePercent: null, // split TIDAK ikut disalin — wajib dientri ulang PD di tahun baru
-        requiresSubTagging: tag.requiresSubTagging,
+        partialAllocations: [], // sengaja TIDAK disalin — wajib dientri ulang PD di tahun baru
         createdBy: session!.user.id,
       },
       { upsert: true, setDefaultsOnInsert: true }
@@ -431,15 +518,19 @@ type EffectiveTag = {
   themeName: string;
   colorHex: string;
   coverage: "penuh" | "sebagian";
-  coveragePercent: number | null;
+  amountRupiah: number | null; // hanya terisi untuk coverage="sebagian"
   inheritedFromName: string | null; // null = tag langsung; berisi nama induk kalau cascade
 };
 
 /**
- * Membangun pohon Program → Kegiatan → Subkegiatan untuk tahun tertentu,
- * masing-masing leaf (subkegiatan) dilengkapi daftar tag EFEKTIF (gabungan
- * tag langsung + warisan cascade dari Program/Kegiatan induknya) — lihat
- * penjelasan desain lengkap di packages/db/src/models/Tagging.ts.
+ * Membangun pohon Program → Kegiatan → Subkegiatan → Rekening untuk tahun
+ * tertentu. DDT v2.0 — `Tagging.budgetStructureId` secara arsitektur SELALU
+ * mengacu ke level Subkegiatan (lihat Tagging.ts), tapi algoritma cascade di
+ * sini tetap generik (jalan untuk level manapun) — konsisten dengan v1.0,
+ * lihat penjelasan desain lengkap di packages/db/src/models/Tagging.ts.
+ * Untuk coverage="sebagian", tag HANYA melekat ke rekening yang benar-benar
+ * disebut di `partialAllocations` (bukan seluruh descendant seperti
+ * coverage="penuh").
  */
 export async function listBudgetTreeWithTags(budgetYear: number) {
   const BudgetStructureModel = await getBudgetStructureModel();
@@ -469,15 +560,32 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
       for (const tag of tags) {
         const theme = themeById.get(tag.themeId.toString());
         if (!theme) continue;
+
+        if (tag.coverage === "penuh") {
+          result.push({
+            taggingId: tag._id.toString(),
+            themeId: tag.themeId.toString(),
+            themeName: theme.name,
+            colorHex: theme.colorHex,
+            coverage: "penuh",
+            amountRupiah: null,
+            inheritedFromName: ancestorId === structureId ? null : structureById.get(ancestorId)?.name ?? null,
+          });
+          continue;
+        }
+
+        // coverage === "sebagian" — hanya melekat kalau rekening INI
+        // (structureId, bukan ancestorId) benar-benar terdaftar di alokasi.
+        const allocation = tag.partialAllocations.find((a) => a.rekeningStructureId.toString() === structureId);
+        if (!allocation) continue;
         result.push({
           taggingId: tag._id.toString(),
           themeId: tag.themeId.toString(),
           themeName: theme.name,
           colorHex: theme.colorHex,
-          coverage: tag.coverage as "penuh" | "sebagian",
-          coveragePercent: tag.coveragePercent ?? null,
-          inheritedFromName:
-            ancestorId === structureId ? null : structureById.get(ancestorId)?.name ?? null,
+          coverage: "sebagian",
+          amountRupiah: allocation.amountRupiah,
+          inheritedFromName: ancestorId === structureId ? null : structureById.get(ancestorId)?.name ?? null,
         });
       }
     }
@@ -489,6 +597,7 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
     level: string;
     name: string;
     pagu: number;
+    realisasi: number;
     ownerWorkUnitId: string | null;
     children: Node[];
     tags?: EffectiveTag[];
@@ -510,13 +619,9 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
       level: s.level,
       name: s.name,
       pagu: s.pagu,
+      realisasi: s.realisasi,
       ownerWorkUnitId: s.ownerWorkUnitId?.toString() ?? null,
       children: [],
-      // Tag efektif dihitung untuk LEAF NODE APA PUN — bukan dikunci ke level
-      // "subkegiatan" — karena data RPJMD asli sering kali baru sampai level
-      // Program (lihat komentar seedExampleBudgetStructure). Struktur SIPD
-      // sungguhan yang lengkap sampai subkegiatan tetap tertangani sama baiknya
-      // karena subkegiatan pasti berstatus leaf juga.
       tags: isLeaf ? effectiveTagsFor(s._id.toString(), (s.path ?? []).map(String)) : undefined,
     });
   }
@@ -532,4 +637,41 @@ export async function listBudgetTreeWithTags(budgetYear: number) {
   }
 
   return roots;
+}
+
+/** Rekening di bawah satu Subkegiatan — dipakai form alokasi partial (PartialAllocationModal). */
+export async function listRekeningUnderSubkegiatan(subkegiatanId: string) {
+  const BudgetStructureModel = await getBudgetStructureModel();
+  return BudgetStructureModel.find({ parentId: subkegiatanId, level: "rekening" })
+    .select("name sipdCode pagu realisasi")
+    .sort({ sipdCode: 1 })
+    .lean();
+}
+
+/**
+ * Data gabungan untuk PartialAllocationModal — daftar rekening di bawah
+ * subkegiatan tagging ini + alokasi yang sudah tersimpan, dalam satu
+ * panggilan (dipicu dari tombol "Ubah Alokasi" pada rekening manapun yang
+ * sudah punya tag, cukup modal tahu taggingId-nya).
+ */
+export async function getTaggingAllocationEditor(taggingId: string) {
+  const TaggingModel = await getTaggingModel();
+  const tagging = await TaggingModel.findById(taggingId).lean();
+  if (!tagging) return null;
+
+  const rekeningOptions = await listRekeningUnderSubkegiatan(tagging.budgetStructureId.toString());
+  return {
+    taggingId: tagging._id.toString(),
+    allocations: tagging.partialAllocations.map((a) => ({
+      rekeningStructureId: a.rekeningStructureId.toString(),
+      amountRupiah: a.amountRupiah,
+    })),
+    rekeningOptions: rekeningOptions.map((r) => ({
+      _id: r._id.toString(),
+      name: r.name,
+      sipdCode: r.sipdCode,
+      pagu: r.pagu,
+      realisasi: r.realisasi,
+    })),
+  };
 }

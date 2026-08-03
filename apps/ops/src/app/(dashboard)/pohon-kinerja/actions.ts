@@ -2,14 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { getIndicatorModel } from "@simonev/db";
-import {
-  createIndicatorSchema,
-  weightedSumVariablesSchema,
-  TIER_ORDER,
-  type CreateIndicatorInput,
-} from "@simonev/schemas";
+import { getIndicatorModel, getVariableModel, getBudgetStructureModel } from "@simonev/db";
+import { createIndicatorSchema, TIER_ORDER, type CreateIndicatorInput } from "@simonev/schemas";
 import type { ActionResult } from "@/lib/action-result";
+import { getTahunAktif } from "@/lib/system-setting";
 
 /**
  * Membuat node baru di Pohon Kinerja (F-01). Dua lapis validasi:
@@ -44,13 +40,6 @@ export async function createIndicator(input: CreateIndicatorInput): Promise<Acti
     }
   } else if (data.tier !== "VISI") {
     return { ok: false, error: "Hanya tingkat VISI yang boleh tanpa induk." };
-  }
-
-  if (data.calculationMethod === "weighted_sum") {
-    const parsedVariables = weightedSumVariablesSchema.safeParse(data.variables);
-    if (!parsedVariables.success) {
-      return { ok: false, error: parsedVariables.error.issues[0]?.message ?? "Data variabel tidak valid." };
-    }
   }
 
   const created = await IndicatorModel.create({
@@ -88,4 +77,20 @@ export async function getIndicatorTree() {
     }
   }
   return roots;
+}
+
+/** DDT v2.0 Section 2.2 — daftar Variable aktif untuk dipilih di formula builder. */
+export async function listVariablesForFormula() {
+  const VariableModel = await getVariableModel();
+  return VariableModel.find({ isActive: true }).select("name unit").sort({ name: 1 }).lean();
+}
+
+/** DDT v2.0 Section 2.2 (linkedProgramId) — daftar Program tahun aktif untuk tier SASARAN_PROGRAM. */
+export async function listBudgetProgramsForYear() {
+  const tahunAktif = await getTahunAktif();
+  const BudgetStructureModel = await getBudgetStructureModel();
+  return BudgetStructureModel.find({ level: "program", budgetYear: tahunAktif })
+    .select("name sipdCode")
+    .sort({ name: 1 })
+    .lean();
 }

@@ -1,13 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/auth";
-import { getFinalValueModel } from "@simonev/db";
+import { listFinalValuesForReport } from "@/app/(dashboard)/laporan/actions";
 
 /**
  * F-11 — Ekspor CSV (DDT Section 4.B: "Route Handler streaming CSV/XLSX").
- * CSV dipilih dibanding XLSX untuk versi pertama ini — bisa dibuka semua
- * software spreadsheet tanpa dependency parsing tambahan di sisi klien;
- * upgrade ke XLSX (pakai ExcelJS, sudah jadi dependency untuk F-02) tinggal
- * mengganti bagian pembuatan response di bawah kalau dibutuhkan nanti.
+ * DDT v2.0 — memakai sumber data yang sama dengan halaman laporan
+ * (`listFinalValuesForReport`, dihitung dari formula variabel) supaya kedua
+ * tampilan tidak pernah berbeda. CSV dipilih dibanding XLSX untuk versi
+ * pertama ini — bisa dibuka semua software spreadsheet tanpa dependency
+ * parsing tambahan di sisi klien.
  */
 export async function GET(request: NextRequest) {
   const session = await auth();
@@ -19,28 +20,12 @@ export async function GET(request: NextRequest) {
   const periodYear = searchParams.get("periodYear");
   const workUnitIdParam = searchParams.get("workUnitId");
 
-  const query: Record<string, unknown> = {};
-  if (periodYear) query.periodYear = Number(periodYear);
+  const rows = await listFinalValuesForReport({
+    periodYear: periodYear ? Number(periodYear) : undefined,
+    workUnitId: workUnitIdParam ?? undefined,
+  });
 
-  // Sama seperti actions.ts: PD/OPD dipaksa hanya bisa ekspor data OPD-nya
-  // sendiri, ditegakkan di server — parameter workUnitId dari luar diabaikan
-  // untuk role pd_opd, BUKAN hanya disembunyikan di UI.
-  if (session.user.role === "pd_opd") {
-    query.workUnitId = session.user.workUnitId;
-  } else if (workUnitIdParam) {
-    query.workUnitId = workUnitIdParam;
-  }
-
-  const FinalValueModel = await getFinalValueModel();
-  const rows = await FinalValueModel.find(query)
-    .sort({ approvedAt: -1 })
-    .limit(2000)
-    .populate("indicatorId", "label unit")
-    .populate("workUnitId", "name")
-    .populate("approvedBy", "name")
-    .lean();
-
-  const header = ["Indikator", "Satuan", "PD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal Approve"];
+  const header = ["Indikator", "Satuan", "PD", "Tahun", "Nilai", "Status", "Update Terakhir"];
   // RFC 4180: bungkus dengan tanda kutip kalau mengandung koma/kutip/baris baru,
   // dan gandakan setiap tanda kutip di dalamnya -- kalau tidak, field yang
   // memuat tanda kutip (mis. nama program berformat "...") merusak kolom
@@ -51,17 +36,14 @@ export async function GET(request: NextRequest) {
   const csvLines = [header.join(",")];
 
   for (const r of rows) {
-    const indicator = r.indicatorId as unknown as { label?: string; unit?: string } | null;
-    const workUnit = r.workUnitId as unknown as { name?: string } | null;
-    const approver = r.approvedBy as unknown as { name?: string } | null;
     const cells = [
-      indicator?.label ?? "",
-      indicator?.unit ?? "",
-      workUnit?.name ?? "",
-      `${r.periodLabel} ${r.periodYear}`,
-      r.value,
-      approver?.name ?? "",
-      new Date(r.approvedAt).toISOString(),
+      r.indicatorLabel,
+      r.unit ?? "",
+      r.workUnitName ?? "",
+      String(r.periodYear),
+      r.value ?? "",
+      r.status,
+      r.approvedAt ? new Date(r.approvedAt).toISOString() : "",
     ];
     csvLines.push(cells.map((c) => escapeCsvCell(String(c))).join(","));
   }

@@ -2,7 +2,8 @@ import { Schema, type InferSchemaType, type Connection, type Model } from "mongo
 import { connectCore } from "../connection";
 
 /**
- * F-01 — Master Data Indikator & Pohon Kinerja (PRD 5.1, 4.1).
+ * F-01 — Master Data Indikator & Pohon Kinerja (PRD 5.1, 4.1; DDT v2.0
+ * Section 2.2).
  *
  * Tujuh tingkat hierarki sesuai PRD:
  * VISI → MISI → TUJUAN_DAERAH → SASARAN_STRATEGIS_DAERAH → TUJUAN_PD
@@ -12,6 +13,12 @@ import { connectCore } from "../connection";
  * hingga induk langsung. Ini membuat query "ambil seluruh keturunan node X"
  * cukup satu query (`{ path: nodeId }`) tanpa rekursi — penting untuk performa
  * dashboard (NFR: API < 500ms, PRD Section 6).
+ *
+ * DDT v2.0 — pergeseran arsitektur ke level Variabel: indikator TIDAK LAGI
+ * diisi/disetujui langsung (lihat VariableRealization/VariableFinalValue).
+ * Nilainya dihitung dari `formula` (daftar Variable + peran) lewat
+ * computeIndicatorValue() di apps/ops/src/lib/capaian.ts, dievaluasi saat
+ * dibutuhkan (atau di-cache di ReadmodelSnapshot).
  */
 export const INDICATOR_TIERS = [
   "VISI",
@@ -24,13 +31,30 @@ export const INDICATOR_TIERS = [
 ] as const;
 export type IndicatorTier = (typeof INDICATOR_TIERS)[number];
 
+/** DDT v2.0 Section 2.2 — menggantikan 5 metode lama (sum/average/weighted_sum/last_period/categorical). */
 export const CALCULATION_METHODS = [
-  "sum",
-  "average",
-  "weighted_sum",
-  "last_period",
-  "categorical",
+  "variabel_tunggal",
+  "persentase",
+  "penjumlahan",
+  "rata_rata",
+  "penjumlahan_berbobot",
+  "selisih",
+  "rasio",
+  "kategorikal",
 ] as const;
+export type CalculationMethod = (typeof CALCULATION_METHODS)[number];
+
+export const FORMULA_ROLES = ["tunggal", "pembilang", "penyebut", "komponen", "pengurang"] as const;
+export type FormulaRole = (typeof FORMULA_ROLES)[number];
+
+export const CROSS_CUTTING_TYPES = ["berbagi", "terpisah"] as const;
+export type CrossCuttingType = (typeof CROSS_CUTTING_TYPES)[number];
+
+export const SPLIT_CONFIG_MODES = ["dijumlahkan", "ditunjuk"] as const;
+export type SplitConfigMode = (typeof SPLIT_CONFIG_MODES)[number];
+
+export const VARIABLE_DATA_SOURCE_TYPES = ["manual", "satu_data", "api"] as const;
+export type VariableDataSourceType = (typeof VARIABLE_DATA_SOURCE_TYPES)[number];
 
 const indicatorSchema = new Schema(
   {
@@ -43,18 +67,62 @@ const indicatorSchema = new Schema(
     // Diisi mulai tier TUJUAN_PD ke bawah — OPD penanggung jawab utama.
     ownerWorkUnitId: { type: Schema.Types.ObjectId, ref: "OrgUnit", default: null },
 
-    // F-05 — Target Silang Sektor (PRD Section 3 F-05). Kosong = indikator
-    // biasa (single-owner, asumsi rilis awal F-08 di PRD 5.3). Non-kosong =
-    // indikator cross-cutting: OPD di luar ownerWorkUnitId yang tercantum di
-    // sini JUGA berhak melapor untuk indikator ini (lihat F-04
-    // listReportableIndicators). Setiap OPD tetap punya FinalValue miliknya
-    // sendiri (keyed indicatorId+workUnitId+period, tidak berubah) — F-05
-    // menambah KEMAMPUAN MELIHAT & MENJUMLAHKAN seluruh kontribusi OPD lewat
-    // getCrossCuttingRollup(), bukan memaksa satu nilai tunggal yang
-    // diperebutkan banyak OPD (lihat komentar lengkap di rekonsiliasi/actions.ts).
-    crossCuttingWorkUnitIds: [{ type: Schema.Types.ObjectId, ref: "OrgUnit" }],
+    // DDT v2.0 Section 2.2 — 8 metode, diterapkan lewat computeIndicatorValue().
+    calculationMethod: { type: String, enum: CALCULATION_METHODS, default: "variabel_tunggal" },
 
-    calculationMethod: { type: String, enum: CALCULATION_METHODS, default: "last_period" },
+    // Daftar Variable pembentuk formula + peran masing-masing.
+    formula: [
+      {
+        variableId: { type: Schema.Types.ObjectId, ref: "Variable", required: true },
+        role: { type: String, enum: FORMULA_ROLES, required: true },
+        // hanya dipakai untuk calculationMethod="penjumlahan_berbobot", total wajib 100 (divalidasi Zod)
+        weight: { type: Number, default: null },
+        _id: false,
+      },
+    ],
+
+    // Kategorikal (PRD 5.1.5) — nilai VariableFinalValue untuk variabel
+    // kategorikal menyimpan LABEL kategori, capaian%-nya di-lookup dari sini.
+    categories: [
+      { label: { type: String, required: true }, capaianPercent: { type: Number, required: true }, _id: false },
+    ],
+
+    // F-05 Cross-Cutting (PRD 5.4, DDT v2.0 Section 2.2) — per Indicator,
+    // bukan per Variable, karena ini properti "siapa boleh lapor untuk
+    // indikator ini", bukan properti variabel itu sendiri.
+    crossCutting: {
+      type: { type: String, enum: CROSS_CUTTING_TYPES, default: null },
+      primaryWorkUnitId: { type: Schema.Types.ObjectId, ref: "OrgUnit", default: null }, // Tipe Berbagi
+      workUnitIds: [{ type: Schema.Types.ObjectId, ref: "OrgUnit" }], // seluruh PD terlibat (kedua tipe)
+      // Tipe Terpisah — pengaturan PER VARIABEL dalam formula (PRD 5.4.2):
+      // satu formula bisa punya variabel "dijumlahkan" dan variabel
+      // "ditunjuk" sekaligus.
+      splitConfig: [
+        {
+          variableId: { type: Schema.Types.ObjectId, ref: "Variable", required: true },
+          mode: { type: String, enum: SPLIT_CONFIG_MODES, required: true },
+          designatedWorkUnitId: { type: Schema.Types.ObjectId, ref: "OrgUnit", default: null }, // wajib jika mode="ditunjuk"
+          _id: false,
+        },
+      ],
+    },
+
+    // F-01 5.1.6 — wajib untuk tier SASARAN_PROGRAM.
+    linkedProgramId: { type: Schema.Types.ObjectId, ref: "BudgetStructure", default: null },
+
+    // Target RPJMD (PRD 5.6.2) — "Akumulatif untuk Periode RPJMD?"
+    rpjmdCumulative: { type: Boolean, default: false },
+
+    // Pengelolaan Sumber Data (PRD 5.2.3) — per variabel dalam formula.
+    variableSources: [
+      {
+        variableId: { type: Schema.Types.ObjectId, ref: "Variable", required: true },
+        sourceType: { type: String, enum: VARIABLE_DATA_SOURCE_TYPES, required: true },
+        apiConnectorKey: { type: String, default: null }, // wajib jika sourceType="api"
+        _id: false,
+      },
+    ],
+
     polarity: { type: String, enum: ["positive", "negative"], default: "positive" },
     allowOverachievement: { type: Boolean, default: false },
     periodicity: {
@@ -102,7 +170,8 @@ const indicatorSchema = new Schema(
 indicatorSchema.index({ parentId: 1 });
 indicatorSchema.index({ path: 1 });
 indicatorSchema.index({ ownerWorkUnitId: 1, isActive: 1 });
-indicatorSchema.index({ crossCuttingWorkUnitIds: 1 });
+indicatorSchema.index({ "crossCutting.workUnitIds": 1 });
+indicatorSchema.index({ "formula.variableId": 1 });
 indicatorSchema.index({ tier: 1, isActive: 1 });
 
 /**

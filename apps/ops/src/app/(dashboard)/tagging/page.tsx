@@ -1,14 +1,14 @@
 import { auth } from "@/auth";
 import { listThemes, listBudgetTreeWithTags, listNomenclatureChanges } from "./actions";
 import { TaggingClient } from "./TaggingClient";
-
-const CURRENT_BUDGET_YEAR = new Date().getFullYear();
+import { getTahunAktif } from "@/lib/system-setting";
 
 export default async function TaggingPage() {
   const session = await auth();
+  const tahunAktif = await getTahunAktif();
   const [themes, tree, nomenclatureChanges] = await Promise.all([
     listThemes(),
-    listBudgetTreeWithTags(CURRENT_BUDGET_YEAR),
+    listBudgetTreeWithTags(tahunAktif),
     listNomenclatureChanges(),
   ]);
   const canManage = session?.user.role === "bapperida" || session?.user.role === "admin_sistem";
@@ -18,15 +18,15 @@ export default async function TaggingPage() {
       <div className="mb-6">
         <h1 className="font-display text-xl font-semibold text-ink">Tagging Anggaran Tematik</h1>
         <p className="text-sm text-muted mt-1">
-          Dukungan program/kegiatan/subkegiatan terhadap tema prioritas daerah — sepenuhnya
-          independen dari jalur kinerja RPJMD (F-02, PRD 4.1 &amp; 5.6). Tahun anggaran{" "}
-          {CURRENT_BUDGET_YEAR}.
+          Dukungan subkegiatan/rekening terhadap tema prioritas daerah — sepenuhnya independen dari
+          jalur kinerja RPJMD (F-02, PRD 4.1 &amp; 5.7, DDT v2.0 Section 2.7). Tahun anggaran{" "}
+          {tahunAktif}.
         </p>
       </div>
       <TaggingClient
         themes={JSON.parse(JSON.stringify(themes))}
         tree={JSON.parse(JSON.stringify(tree))}
-        budgetYear={CURRENT_BUDGET_YEAR}
+        budgetYear={tahunAktif}
         myWorkUnitId={session?.user.workUnitId ?? null}
         canManage={canManage}
       />

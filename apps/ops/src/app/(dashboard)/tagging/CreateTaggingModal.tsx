@@ -33,7 +33,6 @@ export function CreateTaggingModal({
       budgetStructureId: node._id,
       budgetYear,
       coverage,
-      requiresSubTagging: false,
     });
     setBusy(false);
     if (!result.ok) {
@@ -48,7 +47,7 @@ export function CreateTaggingModal({
       <div className="w-full max-w-md bg-surface rounded-xl p-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs font-mono text-muted uppercase">Tag Node</div>
+            <div className="text-xs font-mono text-muted uppercase">Tag Subkegiatan</div>
             <div className="text-base font-semibold text-ink mt-0.5">{node.name}</div>
           </div>
           <button onClick={onClose} aria-label="Tutup">
@@ -77,17 +76,10 @@ export function CreateTaggingModal({
                 onChange={(e) => setCoverage(e.target.value as "penuh" | "sebagian")}
                 className="px-3 py-2 rounded-lg border border-border text-sm"
               >
-                <option value="penuh">Seluruh anggaran</option>
-                <option value="sebagian">Sebagian — persentase dientri PD saat realisasi</option>
+                <option value="penuh">Seluruh anggaran subkegiatan</option>
+                <option value="sebagian">Sebagian — dipilih per rekening dengan nominal Rupiah (PRD 5.7.3)</option>
               </select>
             </label>
-
-            {node.level !== "subkegiatan" && (
-              <div className="text-[11.5px] text-muted bg-bg rounded-lg px-3 py-2 mt-3">
-                Tag di level {node.level === "program" ? "Program" : "Kegiatan"} akan otomatis berlaku
-                (cascade) untuk seluruh turunannya (PRD 5.6).
-              </div>
-            )}
 
             {error && <div className="text-sm text-danger bg-danger-tint rounded-lg px-3 py-2 mt-3">{error}</div>}
 
