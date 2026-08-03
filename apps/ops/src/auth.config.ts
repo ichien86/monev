@@ -23,6 +23,7 @@ export const authConfig = {
       if (user) {
         token.role = user.role;
         token.workUnitId = user.workUnitId;
+        token.username = user.username;
       }
       return token;
     },
@@ -34,6 +35,7 @@ export const authConfig = {
       if (token.sub) session.user.id = token.sub;
       session.user.role = token.role as UserRole;
       session.user.workUnitId = (token.workUnitId as string | null) ?? null;
+      session.user.username = token.username as string;
       return session;
     },
   },

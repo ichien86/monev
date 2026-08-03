@@ -1,33 +1,31 @@
-import { listReportableIndicators, listMySubmissions } from "./actions";
-import { SubmissionForm } from "./SubmissionForm";
-import { SubmissionStatusBadge } from "./SubmissionStatusBadge";
+import { listReportableVariables, listMyRealizations } from "./actions";
+import { RealizationForm } from "./RealizationForm";
+import { RealizationStatusBadge } from "./RealizationStatusBadge";
 
 export default async function InputDataPage() {
-  const [indicators, submissions] = await Promise.all([
-    listReportableIndicators(),
-    listMySubmissions(),
-  ]);
+  const [options, realizations] = await Promise.all([listReportableVariables(), listMyRealizations()]);
 
   return (
     <div className="p-8 max-w-3xl">
       <div className="mb-6">
         <h1 className="font-display text-xl font-semibold text-ink">Input Data & Bukti</h1>
         <p className="text-sm text-muted mt-1">
-          Laporkan realisasi indikator beserta link bukti (F-04). Validasi teknis link &amp;
-          format dilakukan otomatis oleh sistem — tim Bapperida hanya menilai isi dokumen.
+          Laporkan realisasi variabel beserta link bukti (F-04, DDT v2.0 Section 2.3). Validasi
+          teknis link, format, dan isi dokumen dilakukan otomatis oleh sistem — Admin Perencana
+          hanya menilai substansi.
         </p>
       </div>
 
-      <SubmissionForm indicatorOptions={indicators.map((i) => ({ _id: i._id.toString(), label: i.label }))} />
+      <RealizationForm options={options} />
 
       <div className="bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border text-sm font-semibold text-ink">
-          Riwayat Submission
+          Riwayat Realisasi
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-bg">
-              {["Indikator", "Periode", "Nilai", "Status"].map((h) => (
+              {["Indikator", "Variabel", "Periode", "Nilai", "Status"].map((h) => (
                 <th key={h} className="text-left px-5 py-2.5 font-mono text-[10px] text-muted uppercase tracking-wide">
                   {h}
                 </th>
@@ -35,22 +33,23 @@ export default async function InputDataPage() {
             </tr>
           </thead>
           <tbody>
-            {submissions.map((s: any) => (
-              <tr key={s._id.toString()} className="border-t border-border">
-                <td className="px-5 py-3">{s.indicatorId?.label ?? "—"}</td>
+            {realizations.map((r: any) => (
+              <tr key={r._id.toString()} className="border-t border-border">
+                <td className="px-5 py-3">{r.indicatorId?.label ?? "—"}</td>
+                <td className="px-5 py-3 text-muted">{r.variableId?.name ?? "—"}</td>
                 <td className="px-5 py-3 text-muted">
-                  {s.periodLabel} {s.periodYear}
+                  {r.periodLabel} {r.periodYear}
                 </td>
-                <td className="px-5 py-3 font-mono">{s.reportedValue}</td>
+                <td className="px-5 py-3 font-mono">{r.reportedValue}</td>
                 <td className="px-5 py-3">
-                  <SubmissionStatusBadge status={s.status} />
+                  <RealizationStatusBadge status={r.status} />
                 </td>
               </tr>
             ))}
-            {submissions.length === 0 && (
+            {realizations.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-faint text-sm">
-                  Belum ada submission.
+                <td colSpan={5} className="px-5 py-8 text-center text-faint text-sm">
+                  Belum ada realisasi.
                 </td>
               </tr>
             )}

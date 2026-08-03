@@ -13,6 +13,12 @@ type ScheduleItem = {
   isLocked: boolean;
 };
 
+const SCOPE_LABEL: Record<string, string> = {
+  pelaporan_indikator: "Pelaporan",
+  penentuan_target: "Penentuan Target",
+  penutupan_tahun: "Penutupan Tahun",
+};
+
 export function ScheduleTable({ schedules }: { schedules: ScheduleItem[] }) {
   const router = useRouter();
 
@@ -32,7 +38,7 @@ export function ScheduleTable({ schedules }: { schedules: ScheduleItem[] }) {
           {schedules.map((s) => (
             <tr key={s._id} className="border-t border-border">
               <td className="px-5 py-3 font-mono text-[11px] text-muted">
-                {s.scope === "pelaporan_indikator" ? "Pelaporan" : "Split Tagging"}
+                {SCOPE_LABEL[s.scope] ?? s.scope}
               </td>
               <td className="px-5 py-3">{s.label}</td>
               <td className="px-5 py-3 text-muted">

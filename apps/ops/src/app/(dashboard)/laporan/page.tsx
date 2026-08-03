@@ -19,8 +19,8 @@ export default async function LaporanPage({
       <div className="mb-6">
         <h1 className="font-display text-xl font-semibold text-ink">Tabel Data &amp; Ekspor</h1>
         <p className="text-sm text-muted mt-1">
-          Rincian nilai final per indikator (F-11, versi operasional). Dashboard ringkasan untuk
-          pimpinan ada di SIMONEV Eksekutif.
+          Rincian nilai final per indikator, dihitung dari formula variabel (F-11, DDT v2.0 Section
+          3.2). Dashboard ringkasan untuk pimpinan ada di SIMONEV Eksekutif.
         </p>
       </div>
 
@@ -30,7 +30,7 @@ export default async function LaporanPage({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-bg">
-              {["Indikator", "OPD", "Periode", "Nilai Final", "Disetujui Oleh", "Tanggal"].map((h) => (
+              {["Indikator", "OPD", "Tahun", "Nilai", "Status", "Update Terakhir"].map((h) => (
                 <th key={h} className="text-left px-5 py-2.5 font-mono text-[10px] text-muted uppercase tracking-wide">
                   {h}
                 </th>
@@ -38,19 +38,25 @@ export default async function LaporanPage({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r: any) => (
-              <tr key={r._id.toString()} className="border-t border-border">
-                <td className="px-5 py-3">{r.indicatorId?.label ?? "—"}</td>
-                <td className="px-5 py-3 text-muted">{r.workUnitId?.name ?? "—"}</td>
-                <td className="px-5 py-3 text-muted">
-                  {r.periodLabel} {r.periodYear}
-                </td>
+            {rows.map((r) => (
+              <tr key={r.indicatorId} className="border-t border-border">
+                <td className="px-5 py-3">{r.indicatorLabel}</td>
+                <td className="px-5 py-3 text-muted">{r.workUnitName ?? "—"}</td>
+                <td className="px-5 py-3 text-muted">{r.periodYear}</td>
                 <td className="px-5 py-3 font-mono">
-                  {r.value} {r.indicatorId?.unit ?? ""}
+                  {r.value ?? "—"} {r.value !== null ? r.unit ?? "" : ""}
                 </td>
-                <td className="px-5 py-3 text-muted">{r.approvedBy?.name ?? "—"}</td>
+                <td className="px-5 py-3">
+                  <span
+                    className={`font-mono text-[10.5px] font-semibold px-2.5 py-1 rounded-full ${
+                      r.status === "lengkap" ? "bg-success-tint text-success" : "bg-accent-tint text-accent"
+                    }`}
+                  >
+                    {r.status === "lengkap" ? "Lengkap" : "Belum Lengkap"}
+                  </span>
+                </td>
                 <td className="px-5 py-3 font-mono text-xs text-muted">
-                  {new Date(r.approvedAt).toLocaleDateString("id-ID")}
+                  {r.approvedAt ? new Date(r.approvedAt).toLocaleDateString("id-ID") : "—"}
                 </td>
               </tr>
             ))}

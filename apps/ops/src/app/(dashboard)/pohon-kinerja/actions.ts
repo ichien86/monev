@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { getIndicatorModel } from "@simonev/db";
+import { getIndicatorModel, getVariableModel, getBudgetStructureModel } from "@simonev/db";
 import { createIndicatorSchema, TIER_ORDER, type CreateIndicatorInput } from "@simonev/schemas";
 import type { ActionResult } from "@/lib/action-result";
+import { getTahunAktif } from "@/lib/system-setting";
 
 /**
  * Membuat node baru di Pohon Kinerja (F-01). Dua lapis validasi:
@@ -76,4 +77,20 @@ export async function getIndicatorTree() {
     }
   }
   return roots;
+}
+
+/** DDT v2.0 Section 2.2 — daftar Variable aktif untuk dipilih di formula builder. */
+export async function listVariablesForFormula() {
+  const VariableModel = await getVariableModel();
+  return VariableModel.find({ isActive: true }).select("name unit").sort({ name: 1 }).lean();
+}
+
+/** DDT v2.0 Section 2.2 (linkedProgramId) — daftar Program tahun aktif untuk tier SASARAN_PROGRAM. */
+export async function listBudgetProgramsForYear() {
+  const tahunAktif = await getTahunAktif();
+  const BudgetStructureModel = await getBudgetStructureModel();
+  return BudgetStructureModel.find({ level: "program", budgetYear: tahunAktif })
+    .select("name sipdCode")
+    .sort({ name: 1 })
+    .lean();
 }

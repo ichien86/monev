@@ -4,29 +4,35 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { createSubmissionSchema, type CreateSubmissionInput } from "@simonev/schemas";
-import { createSubmission } from "./actions";
+import { createVariableRealizationSchema, type CreateVariableRealizationInput } from "@simonev/schemas";
+import { createVariableRealization } from "./actions";
 
-type IndicatorOption = { _id: string; label: string };
+type ReportableOption = { indicatorId: string; indicatorLabel: string; variableId: string; variableName: string };
 
-export function SubmissionForm({ indicatorOptions }: { indicatorOptions: IndicatorOption[] }) {
+export function RealizationForm({ options }: { options: ReportableOption[] }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm<CreateSubmissionInput>({
-    // workUnitId diisi otomatis di Server Action dari session — di form ini
-    // hanya placeholder supaya resolver tidak menolak sebelum submit.
-    resolver: zodResolver(createSubmissionSchema),
-    defaultValues: { workUnitId: "placeholder", periodYear: new Date().getFullYear() },
+  } = useForm<CreateVariableRealizationInput>({
+    // workUnitId/indicatorId diisi otomatis (dari session, dan dari lookup
+    // opsi terpilih) sebelum dikirim ke Server Action — di form ini hanya
+    // placeholder supaya resolver tidak menolak sebelum submit.
+    resolver: zodResolver(createVariableRealizationSchema),
+    defaultValues: { workUnitId: "placeholder", indicatorId: "placeholder", periodYear: new Date().getFullYear() },
   });
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
-    const result = await createSubmission(values);
+    const chosen = options.find((o) => o.variableId === values.variableId);
+    const result = await createVariableRealization({
+      ...values,
+      indicatorId: chosen?.indicatorId ?? values.indicatorId,
+    });
     if (!result.ok) {
       setServerError(result.error);
       return;
@@ -38,17 +44,17 @@ export function SubmissionForm({ indicatorOptions }: { indicatorOptions: Indicat
   return (
     <form onSubmit={onSubmit} className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-3 mb-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-mono text-muted uppercase tracking-wide">Indikator</span>
-          <select {...register("indicatorId")} className="px-3 py-2 rounded-lg border border-border text-sm">
-            <option value="">— Pilih indikator —</option>
-            {indicatorOptions.map((opt) => (
-              <option key={opt._id} value={opt._id}>
-                {opt.label}
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className="text-xs font-mono text-muted uppercase tracking-wide">Indikator — Variabel</span>
+          <select {...register("variableId")} className="px-3 py-2 rounded-lg border border-border text-sm">
+            <option value="">— Pilih indikator & variabel —</option>
+            {options.map((opt) => (
+              <option key={`${opt.indicatorId}-${opt.variableId}`} value={opt.variableId}>
+                {opt.indicatorLabel} — {opt.variableName}
               </option>
             ))}
           </select>
-          {errors.indicatorId && <span className="text-xs text-danger">{errors.indicatorId.message}</span>}
+          {errors.variableId && <span className="text-xs text-danger">{errors.variableId.message}</span>}
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-mono text-muted uppercase tracking-wide">Periode</span>
@@ -70,7 +76,7 @@ export function SubmissionForm({ indicatorOptions }: { indicatorOptions: Indicat
           <input {...register("reportedValue")} className="px-3 py-2 rounded-lg border border-border text-sm font-mono" />
           {errors.reportedValue && <span className="text-xs text-danger">{errors.reportedValue.message}</span>}
         </label>
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="text-xs font-mono text-muted uppercase tracking-wide">Link Bukti</span>
           <input
             {...register("evidenceLink")}

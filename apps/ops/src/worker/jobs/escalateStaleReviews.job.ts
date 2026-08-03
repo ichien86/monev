@@ -1,58 +1,63 @@
 import type Agenda from "agenda";
-import { getSubmissionModel, getUserModel } from "@simonev/db";
+import { getVariableRealizationModel, getUserModel } from "@simonev/db";
 import { notify } from "@/lib/notify";
 
 export const ESCALATE_STALE_REVIEWS_JOB = "escalate-stale-reviews";
 
 /**
- * F-06 — Manajemen Eskalasi Cerdas (PRD Section 3 F-06). Aturan eskalasi
- * yang diimplementasikan (default yang masuk akal, dapat disesuaikan):
- * submission berstatus `menunggu_bapperida` lebih dari AMBANG_HARI hari
- * dieskalasi — dikirim notifikasi ke SELURUH akun Bapperida (bukan hanya
- * satu penanggung jawab tunggal, karena PRD tidak mendefinisikan hierarki
- * eskalasi berjenjang di luar peran Bapperida itu sendiri — lihat juga
- * keputusan v10.2 yang menghapus approval berjenjang di F-08 untuk alasan
- * yang sama: kesederhanaan struktur organisasi yang dimodelkan sistem ini).
+ * F-06 — Manajemen Eskalasi Cerdas (PRD Section 3 F-06). DDT v2.0 — beroperasi
+ * di level VariableRealization berstatus `menunggu_admin_perencana` (dan
+ * `ditandai_gagal_ekstrak`, yang tetap masuk antrean review meski ekstraksi
+ * gagal — DDT v2.0 Section 3.4), menggantikan Submission `menunggu_bapperida`
+ * versi v1.0.
  *
- * Setiap submission hanya dieskalasi SEKALI (ditandai lewat `escalatedAt`
- * pada submission itu sendiri) — bukan berulang setiap hari job ini jalan,
- * supaya tidak membanjiri Bapperida dengan notifikasi duplikat untuk item
- * yang sama.
+ * Peran "Admin Perencana" di PRD v10.3 memakai role teknis `bapperida` yang
+ * sama persis (belum ada perubahan daftar role di DDT v2.0 Section 4) — jadi
+ * notifikasi tetap dikirim ke seluruh akun role `bapperida`, bukan hierarki
+ * berjenjang, konsisten dengan keputusan v10.2 yang menghapus approval
+ * berjenjang di F-08.
+ *
+ * Setiap realisasi hanya dieskalasi SEKALI (ditandai lewat `escalatedAt`).
  */
 const AMBANG_HARI = 5;
 
 export function defineEscalateStaleReviewsJob(agenda: Agenda) {
   agenda.define(ESCALATE_STALE_REVIEWS_JOB, async () => {
-    const SubmissionModel = await getSubmissionModel();
+    const VariableRealizationModel = await getVariableRealizationModel();
     const UserModel = await getUserModel();
 
     const threshold = new Date(Date.now() - AMBANG_HARI * 24 * 60 * 60 * 1000);
-    const stale = await SubmissionModel.find({
-      status: "menunggu_bapperida",
+    const stale = await VariableRealizationModel.find({
+      status: { $in: ["menunggu_admin_perencana", "ditandai_gagal_ekstrak"] },
       createdAt: { $lte: threshold },
       escalatedAt: null,
     })
-      .populate("indicatorId", "label")
+      .populate("variableId", "name")
       .populate("workUnitId", "name")
       .lean();
 
     if (stale.length === 0) return;
 
-    const bapperidaUsers = await UserModel.find({ role: "bapperida", isActive: true }).select("_id").lean();
+    const adminPerencanaUsers = await UserModel.find({ role: "bapperida", isActive: true })
+      .select("_id")
+      .lean();
 
-    for (const submission of stale) {
-      for (const user of bapperidaUsers) {
+    for (const realization of stale) {
+      for (const user of adminPerencanaUsers) {
         await notify({
           userId: user._id.toString(),
           type: "warning",
-          title: "Eskalasi: submission menunggu terlalu lama",
-          message: `${(submission.indicatorId as any)?.label ?? "?"} dari ${(submission.workUnitId as any)?.name ?? "?"} sudah menunggu review lebih dari ${AMBANG_HARI} hari.`,
+          title: "Eskalasi: realisasi menunggu terlalu lama",
+          message: `${(realization.variableId as any)?.name ?? "?"} dari ${(realization.workUnitId as any)?.name ?? "?"} sudah menunggu review lebih dari ${AMBANG_HARI} hari.`,
           link: "/rekonsiliasi",
         });
       }
-      await SubmissionModel.updateOne({ _id: submission._id }, { $set: { escalatedAt: new Date() } });
+      await VariableRealizationModel.updateOne(
+        { _id: realization._id },
+        { $set: { escalatedAt: new Date() } }
+      );
     }
 
-    console.log(`[${ESCALATE_STALE_REVIEWS_JOB}] Mengeskalasi ${stale.length} submission.`);
+    console.log(`[${ESCALATE_STALE_REVIEWS_JOB}] Mengeskalasi ${stale.length} realisasi.`);
   });
 }

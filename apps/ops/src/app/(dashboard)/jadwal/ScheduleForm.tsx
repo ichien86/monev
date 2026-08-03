@@ -6,15 +6,17 @@ import { createSchedule } from "./actions";
 
 type Option = { _id: string; label: string };
 
-export function ScheduleForm({
-  indicatorOptions,
-  taggingOptions,
-}: {
-  indicatorOptions: Option[];
-  taggingOptions: Option[];
-}) {
+const SCOPE_LABEL: Record<string, string> = {
+  pelaporan_indikator: "Pelaporan Indikator (F-04)",
+  penentuan_target: "Penentuan Target (boleh dibuka ulang)",
+  penutupan_tahun: "Penutupan Tahun (sistem-lebar)",
+};
+
+export function ScheduleForm({ indicatorOptions }: { indicatorOptions: Option[] }) {
   const router = useRouter();
-  const [scope, setScope] = useState<"pelaporan_indikator" | "entri_split_tagging">("pelaporan_indikator");
+  const [scope, setScope] = useState<"pelaporan_indikator" | "penentuan_target" | "penutupan_tahun">(
+    "pelaporan_indikator"
+  );
   const [refId, setRefId] = useState("");
   const [periodYear, setPeriodYear] = useState(new Date().getFullYear());
   const [periodLabel, setPeriodLabel] = useState("");
@@ -22,14 +24,14 @@ export function ScheduleForm({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const options = scope === "pelaporan_indikator" ? indicatorOptions : taggingOptions;
+  const needsTarget = scope !== "penutupan_tahun";
 
   const submit = async () => {
     setBusy(true);
     setError(null);
     const result = await createSchedule({
       scope,
-      refId,
+      refId: needsTarget ? refId : "000000000000000000000000",
       periodYear,
       periodLabel,
       deadlineAt: new Date(deadline).toISOString(),
@@ -58,23 +60,26 @@ export function ScheduleForm({
             }}
             className="px-3 py-2 rounded-lg border border-border text-sm"
           >
-            <option value="pelaporan_indikator">Pelaporan Indikator (F-04)</option>
-            <option value="entri_split_tagging">Entri Split Tagging (F-02)</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-mono text-muted uppercase tracking-wide">
-            {scope === "pelaporan_indikator" ? "Indikator" : "Tagging"}
-          </span>
-          <select value={refId} onChange={(e) => setRefId(e.target.value)} className="px-3 py-2 rounded-lg border border-border text-sm">
-            <option value="">— Pilih —</option>
-            {options.map((o) => (
-              <option key={o._id} value={o._id}>
-                {o.label}
+            {Object.entries(SCOPE_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
               </option>
             ))}
           </select>
         </label>
+        {needsTarget && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-mono text-muted uppercase tracking-wide">Indikator</span>
+            <select value={refId} onChange={(e) => setRefId(e.target.value)} className="px-3 py-2 rounded-lg border border-border text-sm">
+              <option value="">— Pilih —</option>
+              {indicatorOptions.map((o) => (
+                <option key={o._id} value={o._id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-mono text-muted uppercase tracking-wide">Periode</span>
           <div className="flex gap-2">
@@ -104,7 +109,7 @@ export function ScheduleForm({
       </div>
       {error && <div className="text-sm text-danger bg-danger-tint rounded-lg px-3 py-2">{error}</div>}
       <button
-        disabled={busy || !refId || !periodLabel || !deadline}
+        disabled={busy || (needsTarget && !refId) || !periodLabel || !deadline}
         onClick={submit}
         className="self-start px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold disabled:opacity-50"
       >

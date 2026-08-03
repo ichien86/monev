@@ -2,11 +2,17 @@ import type Agenda from "agenda";
 import { getScheduleModel } from "@simonev/db";
 
 /**
- * F-03 — Penjadwalan & Penguncian Otomatis (PRD Section 3).
- * Berjalan berkala; mengunci setiap Schedule yang tenggatnya sudah lewat
- * dan belum terkunci. Setelah terkunci, PD tidak bisa lagi submit untuk
- * periode tersebut (pengecekan `isLocked` dilakukan di F-04 createSubmission —
- * belum di-scaffold pada tahap ini, lihat README bagian "Langkah Selanjutnya").
+ * F-03 — Penjadwalan & Penguncian Otomatis (PRD Section 3, DDT v2.0
+ * Section 2.12). Berjalan berkala; mengunci setiap Schedule yang tenggatnya
+ * sudah lewat dan belum terkunci — logikanya scope-agnostic (bekerja sama
+ * untuk ketiga scope: "pelaporan_indikator", "penentuan_target",
+ * "penutupan_tahun"), jadi tidak berubah dari v1.0 walau daftar scope
+ * bertambah. Setelah terkunci, PD tidak bisa lagi submit realisasi untuk
+ * periode tersebut (pengecekan `isLocked` dilakukan di F-04
+ * createVariableRealization). Untuk scope "penentuan_target" yang boleh
+ * dibuka ulang (DDT v2.0 2.12): membuka ulang berarti membuat dokumen
+ * Schedule BARU (bukan meng-unlock dokumen lama) lewat Server Action Admin
+ * Perencana — job ini tidak perlu tahu soal itu sama sekali.
  */
 export const LOCK_OVERDUE_PERIODS_JOB = "lock-overdue-periods";
 

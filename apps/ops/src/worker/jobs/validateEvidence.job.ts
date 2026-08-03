@@ -1,67 +1,94 @@
 import type Agenda from "agenda";
 import type { Job } from "agenda";
-import { getSubmissionModel } from "@simonev/db";
+import { getVariableRealizationModel } from "@simonev/db";
 import { validateEvidenceLink } from "@/lib/evidence-validation";
 import { notify } from "@/lib/notify";
+import { VALIDATE_EXTRACTION_JOB } from "./validateExtraction.job";
 
 export const VALIDATE_EVIDENCE_JOB = "validate-evidence";
 
-type ValidateEvidenceData = { submissionId: string };
+type ValidateEvidenceData = { realizationId: string };
 
 /**
- * F-04 — alur lengkap DDT Section 6.1: submission masuk berstatus
- * `validasi_link` → job ini jalan → hasil menentukan submission lanjut ke
- * `menunggu_bapperida` atau berhenti di `ditolak_sistem`. Tidak ada langkah
- * manusia di antara PD dan Bapperida (peran Walidata sudah dicabut, PRD v10.2).
+ * DDT v2.0 Section 3.1/3.4 — alur lengkap: realisasi masuk berstatus
+ * `validasi_link` → job ini jalan (cek link+format) → lolos lanjut ke job
+ * `validate-extraction` (DDT 3.4, khusus sourceType="manual") → hasil
+ * ekstraksi menentukan realisasi lanjut ke `menunggu_admin_perencana` atau
+ * kembali ke PD (`menunggu_konfirmasi_pd`). Tidak lolos link/format →
+ * `ditolak` langsung di sini, tanpa lanjut ke ekstraksi.
  */
 export function defineValidateEvidenceJob(agenda: Agenda) {
   agenda.define(VALIDATE_EVIDENCE_JOB, async (job: Job<ValidateEvidenceData>) => {
-    const { submissionId } = job.attrs.data;
-    const SubmissionModel = await getSubmissionModel();
-    const submission = await SubmissionModel.findById(submissionId);
-    if (!submission) {
-      console.warn(`[${VALIDATE_EVIDENCE_JOB}] Submission ${submissionId} tidak ditemukan, dilewati.`);
+    const { realizationId } = job.attrs.data;
+    const VariableRealizationModel = await getVariableRealizationModel();
+    const realization = await VariableRealizationModel.findById(realizationId);
+    if (!realization) {
+      console.warn(`[${VALIDATE_EVIDENCE_JOB}] Realisasi ${realizationId} tidak ditemukan, dilewati.`);
       return;
     }
 
-    const result = await validateEvidenceLink(submission.evidenceLink);
+    // Hanya realisasi manual (evidenceLink terisi) yang lewat jalur ini —
+    // sourceType satu_data/api langsung final lewat job pull-external-sources
+    // (DDT v2.0 3.5), tidak pernah masuk antrean validate-evidence.
+    if (realization.sourceType !== "manual" || !realization.evidenceLink) {
+      console.warn(`[${VALIDATE_EVIDENCE_JOB}] Realisasi ${realizationId} bukan sourceType manual, dilewati.`);
+      return;
+    }
+
+    const result = await validateEvidenceLink(realization.evidenceLink);
 
     if (!result.accessible) {
-      submission.status = "ditolak_sistem";
-      submission.systemValidation = {
+      realization.status = "ditolak";
+      realization.systemValidation = {
         linkAccessible: false,
         formatValid: false,
-        checkedAt: new Date(),
+        extractedValue: null,
+        extractionMatched: null,
         failureReason: result.failureReason,
       };
-      await submission.save();
+      realization.rejectionNote = result.failureReason;
+      await realization.save();
       await notify({
-        userId: submission.submittedBy.toString(),
+        userId: realization.submittedBy.toString(),
         type: "warning",
-        title: "Submission ditolak sistem",
-        message: `Link bukti untuk periode ${submission.periodLabel} ${submission.periodYear} tidak dapat diakses: ${result.failureReason}`,
+        title: "Realisasi ditolak sistem",
+        message: `Link bukti untuk periode ${realization.periodLabel} ${realization.periodYear} tidak dapat diakses: ${result.failureReason}`,
         link: "/input-data",
       });
       return;
     }
 
-    submission.status = result.formatValid ? "menunggu_bapperida" : "ditolak_sistem";
-    submission.systemValidation = {
-      linkAccessible: true,
-      formatValid: result.formatValid,
-      checkedAt: new Date(),
-      failureReason: result.formatValid ? null : result.failureReason,
-    };
-    await submission.save();
-
     if (!result.formatValid) {
+      realization.status = "ditolak";
+      realization.systemValidation = {
+        linkAccessible: true,
+        formatValid: false,
+        extractedValue: null,
+        extractionMatched: null,
+        failureReason: result.failureReason,
+      };
+      realization.rejectionNote = result.failureReason ?? null;
+      await realization.save();
       await notify({
-        userId: submission.submittedBy.toString(),
+        userId: realization.submittedBy.toString(),
         type: "warning",
-        title: "Submission ditolak sistem",
-        message: `Format dokumen bukti untuk periode ${submission.periodLabel} ${submission.periodYear} tidak didukung: ${result.failureReason}`,
+        title: "Realisasi ditolak sistem",
+        message: `Format dokumen bukti untuk periode ${realization.periodLabel} ${realization.periodYear} tidak didukung: ${result.failureReason}`,
         link: "/input-data",
       });
+      return;
     }
+
+    realization.status = "validasi_ekstraksi";
+    realization.systemValidation = {
+      linkAccessible: true,
+      formatValid: true,
+      extractedValue: null,
+      extractionMatched: null,
+      failureReason: null,
+    };
+    await realization.save();
+
+    await agenda.now(VALIDATE_EXTRACTION_JOB, { realizationId: realization._id.toString() });
   });
 }
