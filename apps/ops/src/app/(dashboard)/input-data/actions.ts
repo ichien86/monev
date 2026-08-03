@@ -64,7 +64,7 @@ export async function createVariableRealization(
   if (splitEntry?.mode === "ditunjuk" && splitEntry.designatedWorkUnitId?.toString() !== data.workUnitId) {
     return {
       ok: false,
-      error: "Variabel ini hanya boleh dilaporkan oleh OPD yang ditunjuk (F-05 Tipe Terpisah).",
+      error: "Variabel ini hanya boleh dilaporkan oleh PD yang ditunjuk (F-05 Tipe Terpisah).",
     };
   }
   const sourceEntry = indicator.variableSources?.find((s) => s.variableId.toString() === data.variableId);

@@ -85,7 +85,18 @@ export async function listFinalValuesForReport(filter: LaporanFilter) {
       }
     }
 
-    const computed = computeIndicatorValue(indicator, finalValuesByVariableId);
+    const computed = computeIndicatorValue(
+      {
+        calculationMethod: indicator.calculationMethod,
+        formula: indicator.formula.map((f) => ({
+          variableId: f.variableId.toString(),
+          role: f.role,
+          weight: f.weight ?? null,
+        })),
+        categories: indicator.categories,
+      },
+      finalValuesByVariableId
+    );
     const value =
       !computed || computed.status === "belum_lengkap"
         ? null
@@ -96,7 +107,7 @@ export async function listFinalValuesForReport(filter: LaporanFilter) {
     rows.push({
       indicatorId: indicator._id.toString(),
       indicatorLabel: indicator.label,
-      unit: indicator.unit,
+      unit: indicator.unit ?? null,
       workUnitName: (indicator.ownerWorkUnitId as any)?.name ?? null,
       periodYear,
       value,

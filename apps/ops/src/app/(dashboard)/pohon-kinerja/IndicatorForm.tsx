@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useEffect, useState } from "react";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { X, Plus, Trash2 } from "lucide-react";
 import {
@@ -85,6 +85,7 @@ export function IndicatorForm({
     control,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CreateIndicatorInput>({
     resolver: zodResolver(createIndicatorSchema),
@@ -114,6 +115,23 @@ export function IndicatorForm({
 
   const calculationMethod = watch("calculationMethod");
   const crossCuttingType = watch("crossCutting.type");
+  // useWatch (bukan watch()) -- watch() tidak konsisten memicu render ulang
+  // saat leaf field DI DALAM array berubah (mis. formula.0.variableId lewat
+  // <select>), hanya saat array itu sendiri tumbuh/menyusut lewat useFieldArray.
+  const formulaValues = useWatch({ control, name: "formula" });
+
+  // Baris "Sumber Data per Variabel" tidak punya input variableId sendiri --
+  // selalu mengikuti variableId di baris formula yang sejajar (sama indeks).
+  // Disinkron lewat setValue (bukan input hidden ber-`value`, yang tidak
+  // pernah benar-benar diperbarui di state RHF) supaya zodResolver melihat
+  // nilai yang benar SAAT validasi berjalan, bukan cuma saat submit --
+  // kalau tidak, validasi gagal diam-diam (field ini tidak punya pesan error
+  // yang ditampilkan) dan form tidak pernah terkirim ke server.
+  useEffect(() => {
+    formulaValues?.forEach((f, index) => {
+      setValue(`variableSources.${index}.variableId`, f.variableId ?? "", { shouldValidate: false });
+    });
+  }, [formulaValues, setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
@@ -326,7 +344,6 @@ export function IndicatorForm({
                         <span className="w-40 truncate text-muted">
                           {variables.find((v) => v._id === watch(`formula.${index}.variableId`))?.name ?? "(pilih variabel)"}
                         </span>
-                        <input type="hidden" {...register(`variableSources.${index}.variableId` as const)} value={watch(`formula.${index}.variableId`)} />
                         <select
                           {...register(`variableSources.${index}.sourceType` as const)}
                           defaultValue="manual"
@@ -368,7 +385,7 @@ export function IndicatorForm({
                 {crossCuttingType && (
                   <div className="mt-2 flex flex-col gap-2">
                     <div>
-                      <div className="text-[11px] text-faint mb-1">OPD terlibat</div>
+                      <div className="text-[11px] text-faint mb-1">PD terlibat</div>
                       <div className="flex flex-wrap gap-2">
                         {orgUnits.map((unit) => (
                           <label
@@ -384,9 +401,9 @@ export function IndicatorForm({
 
                     {crossCuttingType === "berbagi" && (
                       <label className="flex flex-col gap-1.5">
-                        <span className="text-[11px] text-faint">OPD Primer</span>
+                        <span className="text-[11px] text-faint">PD Primer</span>
                         <select {...register("crossCutting.primaryWorkUnitId")} className="px-3 py-2 rounded-lg border border-border text-sm">
-                          <option value="">— Pilih OPD primer —</option>
+                          <option value="">— Pilih PD primer —</option>
                           {orgUnits.map((unit) => (
                             <option key={unit._id} value={unit._id}>
                               {unit.name}
@@ -400,7 +417,7 @@ export function IndicatorForm({
                       <div>
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-faint">
-                            Konfigurasi per variabel (dijumlahkan / ditunjuk ke satu OPD)
+                            Konfigurasi per variabel (dijumlahkan / ditunjuk ke satu PD)
                           </span>
                           <button
                             type="button"
@@ -440,7 +457,7 @@ export function IndicatorForm({
                                 {...register(`crossCutting.splitConfig.${index}.designatedWorkUnitId` as const)}
                                 className="flex-1 px-2 py-1.5 rounded-lg border border-border text-xs"
                               >
-                                <option value="">— OPD ditunjuk (jika mode ditunjuk) —</option>
+                                <option value="">— PD ditunjuk (jika mode ditunjuk) —</option>
                                 {orgUnits.map((unit) => (
                                   <option key={unit._id} value={unit._id}>
                                     {unit.name}

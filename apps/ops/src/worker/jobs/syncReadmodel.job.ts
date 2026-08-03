@@ -77,7 +77,18 @@ export function defineSyncReadmodelJob(agenda: Agenda) {
         if (representative !== null) finalValuesByVariableId.set(key, representative);
       }
 
-      const computed = computeIndicatorValue(indicator, finalValuesByVariableId);
+      const computed = computeIndicatorValue(
+        {
+          calculationMethod: indicator.calculationMethod,
+          formula: indicator.formula.map((f) => ({
+            variableId: f.variableId.toString(),
+            role: f.role,
+            weight: f.weight ?? null,
+          })),
+          categories: indicator.categories,
+        },
+        finalValuesByVariableId
+      );
       if (!computed || computed.status === "belum_lengkap") {
         belumLaporPeriodeIni += 1;
         continue;

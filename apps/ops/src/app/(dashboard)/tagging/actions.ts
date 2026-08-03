@@ -376,7 +376,7 @@ export async function setPartialAllocations(input: SetPartialAllocationsInput): 
     amountRupiah: a.amountRupiah,
     lastConfirmedBy: session.user.id as any,
     lastConfirmedAt: new Date(),
-  }));
+  })) as any;
   await tagging.save();
 
   await agenda.now(SYNC_READMODEL_JOB, {});

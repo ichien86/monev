@@ -49,7 +49,7 @@ export const targetEntrySchema = z.object({
 
 /** DDT v2.0 Section 2.2 — satu baris formula: Variable pembentuk + perannya. */
 export const formulaEntrySchema = z.object({
-  variableId: z.string(),
+  variableId: z.string().min(1, "Pilih variabel untuk setiap baris formula."),
   role: z.enum(FORMULA_ROLE_VALUES),
   weight: z.number().min(0).max(100).nullable().default(null),
 });
