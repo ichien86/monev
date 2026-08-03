@@ -2,13 +2,13 @@
 
 Sistem Pemantauan Kinerja Indikator RPJMD Kabupaten Boyolali. Monorepo ini adalah implementasi kode dari:
 
-1. **PRD v10.2** — requirement bisnis final (12 modul F-01–F-12).
-2. **Dokumen Desain Teknis (DDT) v1.0** — keputusan arsitektur & teknologi.
-3. **Mockup UI** (`simonev-boyolali-mockup-v10.2-data-riil.jsx`) — referensi visual & data riil dari RPJMD Kabupaten Boyolali 2025–2029.
+1. **PRD v10.4** (naik dari v10.2) — requirement bisnis final, 12 modul F-01–F-12 plus perluasan level-Variabel, tagging berbasis rekening, dan referensi Urusan/Bidang Urusan.
+2. **Dokumen Desain Teknis (DDT) v2.0** (naik dari v1.0) — keputusan arsitektur & teknologi, termasuk pergeseran ke level Variabel.
+3. **Mockup UI** (`simonev-boyolali-mockup-v10.2-data-riil.jsx`) — referensi visual & data riil dari RPJMD Kabupaten Boyolali 2025–2029 (masih relevan untuk token warna/tipografi; struktur data sudah berkembang lewat DDT v2.0).
 
-Kode di repo ini mengikuti ketiganya secara konsisten — token warna Tailwind sama dengan mockup, struktur data mengikuti skema di DDT Section 5, dan aturan bisnis (validasi hierarki, alasan override ≥ 500 karakter, dst.) mengikuti PRD.
+Kode di repo ini mengikuti ketiganya secara konsisten — token warna Tailwind sama dengan mockup, struktur data mengikuti skema di DDT v2.0 Section 2, dan aturan bisnis (validasi hierarki, alasan override ≥ 500 karakter, dst.) mengikuti PRD.
 
-**Status: seluruh 12 modul F-01–F-12 di PRD sudah punya implementasi kerja** (lihat tabel Section "Status Implementasi" di bawah untuk rincian dan batasan tiap modul — beberapa masih menyederhanakan sebagian kasus tepi, didokumentasikan eksplisit, bukan disembunyikan).
+**Status: seluruh 12 modul F-01–F-12 sudah diimplementasikan ulang mengikuti DDT v2.0** (lihat tabel Section "Status Implementasi" di bawah). Perubahan intinya: **indikator tidak lagi diisi/disetujui langsung** — nilainya dihitung dari formula atas satu/lebih **Variable** (master data bersama, realisasinya global per periode), lihat `apps/ops/src/lib/capaian.ts` (`computeIndicatorValue`).
 
 ---
 
@@ -51,13 +51,13 @@ cp .env.example .env.local      # dipakai oleh seed script di root
 
 # isi AUTH_SECRET (hasil dari: npx auth secret) di ketiga file .env.local
 
-npm run seed                    # isi data awal — lihat kredensial yang dicetak di terminal
+npm run seed                    # isi data awal — lihat kredensial (username) yang dicetak di terminal
 npm run dev:ops                 # → http://localhost:3000
 npm run dev:eksekutif           # → http://localhost:3001 (terminal terpisah)
 npm run dev:worker              # → proses Agenda.js (terminal terpisah — WAJIB untuk F-04/F-08/F-12 berfungsi)
 ```
 
-Setelah `npm run seed`, login ke SIMONEV Ops dengan `bapperida@boyolalikab.go.id` (lihat kata sandi di output terminal) untuk melihat cabang Pohon Kinerja nyata dari RPJMD.
+Setelah `npm run seed`, login ke SIMONEV Ops dengan username `bapperida` (lihat kata sandi di output terminal — login sekarang berbasis **username**, bukan email, DDT v2.0 Section 2.10) untuk melihat cabang Pohon Kinerja nyata dari RPJMD.
 
 ### Menjalankan lewat Docker (mendekati produksi)
 ```bash
@@ -68,67 +68,73 @@ docker compose up --build
 
 ---
 
-## Status Implementasi — Seluruh 12 Modul PRD
+## Status Implementasi — Seluruh 12 Modul PRD (per DDT v2.0)
 
 | Kode | Modul | Status | Lokasi | Catatan/Batasan |
 |---|---|---|---|---|
-| F-01 | Master Indikator & Pohon Kinerja | ✅ | `apps/ops/.../pohon-kinerja` | Validasi hierarki (anak harus 1 tingkat di bawah induk) ditegakkan di server, bukan cuma UI |
-| F-02 | Tagging Anggaran Tematik | ✅ | `apps/ops/.../tagging` | Cascade dihitung saat baca (bukan duplikasi fisik — lihat `Tagging.ts`); overlap antar tema diperbolehkan; split oleh PD; copy-advice antar tahun; impor Excel sungguhan (ExcelJS) DAN baris terstruktur (JSON); format kolom Excel yang diharapkan tetap (lihat komentar di `importBudgetStructureFromExcel`), belum ada pemetaan kolom fleksibel |
-| F-03 | Penjadwalan & Penguncian | ✅ | `apps/ops/.../jadwal` | Satu model `Schedule` generik dipakai 2 scope (pelaporan indikator F-04, split tagging F-02); job penguncian tiap jam; job reminder H-3/H-1 (F-12) |
-| F-04 | Input & Validasi Bukti | ✅ | `apps/ops/.../input-data` | Validasi link/format otomatis async (job Agenda), submission ditolak otomatis kalau periode terkunci (F-03) |
-| F-05 | Target Silang Sektor (Cross-Cutting) | ✅ | `apps/ops/.../pohon-kinerja` (konfigurasi) + `.../rekonsiliasi` (tampilan) | `Indicator.crossCuttingWorkUnitIds`; Bapperida melihat submission OPD lain untuk indikator sama saat review; `getCrossCuttingRollup` untuk penjumlahan lintas OPD. **Keputusan desain**: setiap OPD tetap punya `FinalValue` sendiri (tidak dipaksa jadi satu nilai tunggal yang diperebutkan) |
-| F-06 | Manajemen Eskalasi Cerdas | ✅ | Job `escalate-stale-reviews` | Submission menunggu >5 hari dieskalasi ke SELURUH akun Bapperida (bukan hierarki berjenjang — konsisten dengan keputusan PRD v10.2 soal override single-tier); badge "ESKALASI" di UI antrean rekonsiliasi |
-| F-07 | Simulasi & What-If Analysis | ✅ | `apps/ops/.../simulasi` | Murni baca — tidak pernah menulis ke `simonev_core`, aman dicoba berkali-kali |
-| F-08 | Rekonsiliasi & Mediasi Data (+ Override) | ✅ | `apps/ops/.../rekonsiliasi` | `overrideFinalValue` pakai **MongoDB multi-document transaction** sungguhan; alasan override ≥500 karakter ditegakkan di server |
-| F-09 | Master Data Nomenklatur SIPD | ✅ | Terintegrasi di `apps/ops/.../tagging` (bagian bawah halaman) | `SipdNomenclatureChange` — perubahan nama/level/kode induk untuk kode SIPD yang sama antar tahun terdeteksi & tercatat OTOMATIS saat impor, tidak perlu proses manual terpisah |
-| F-10 | Pengaturan Urusan Pemerintahan per Unit Kerja | ✅ | `apps/ops/.../org-unit` | CRUD dasar (create + list); belum ada edit/nonaktifkan dari UI (harus lewat database) |
-| F-11 | Tabel Data Dinamis & Ekspor Laporan | ✅ | `apps/ops/.../laporan` (operasional) + `apps/eksekutif` (ringkasan pimpinan) | Ekspor CSV (Route Handler streaming); PD/OPD dipaksa di server hanya bisa lihat/ekspor data OPD-nya sendiri; belum ada ekspor XLSX (CSV dulu, upgrade tinggal ganti bagian response di `route.ts`) |
-| F-12 | Notifikasi & Smart Reminder | ✅ | Bell icon di header (`_components/NotificationBell.tsx`) | In-app selalu tersimpan; email best-effort via Nodemailer (gagal kirim TIDAK menggagalkan alur bisnis pemanggil); terpasang di 5 titik nyata: submission ditolak sistem, ditolak Bapperida, disetujui, reminder jadwal H-3/H-1, eskalasi F-06 |
-| — | Dashboard Pimpinan (jalur baca) | ✅ | `apps/eksekutif` | ISR 15 menit, membaca `ReadmodelSnapshot`, tidak ada endpoint tulis sama sekali (ditegakkan di middleware + arsitektur) |
-| — | Sinkronisasi read-model (DDT 6.3) | ✅ | `apps/ops/src/worker/jobs/syncReadmodel.job.ts` | `statusDistribution` dari capaian% nyata (PRD 5.5, lihat catatan formula di bawah), `totals`, `belumLaporPeriodeIni`, `temaSummary` — semua dari data riil, dipicu langsung tiap ada approve/override/tagging/split-entry |
+| F-01 | Master Indikator, Pohon Kinerja & Formula | ✅ | `apps/ops/.../pohon-kinerja` + `.../variabel` | Formula builder (8 `calculationMethod`), `linkedProgramId` wajib untuk SASARAN_PROGRAM, kategori untuk metode kategorikal; validasi hierarki tetap ditegakkan di server |
+| F-02 | Tagging Anggaran Tematik (granularitas Rekening) | ✅ | `apps/ops/.../tagging` | Cascade dihitung saat baca; `Tagging.budgetStructureId` mengacu Subkegiatan; `partialAllocations` (nominal Rupiah per rekening) menggantikan persentase tunggal v1.0; impor Laporan Realisasi mengisi `pagu`+`realisasi` sekaligus, kolom Fungsi/Sub Fungsi diabaikan, Sub-SKPD dipetakan ke PD induk |
+| F-03 | Penjadwalan & Penguncian | ✅ | `apps/ops/.../jadwal` | Scope `pelaporan_indikator`/`penentuan_target`/`penutupan_tahun` (`entri_split_tagging` v1.0 dihapus, digantikan notifikasi langsung dari impor tagging) |
+| F-04 | Input, Validasi Bukti & Ekstraksi Dokumen | ✅ | `apps/ops/.../input-data` | Realisasi per Variable (bukan per Indicator); validasi link/format lalu **ekstraksi konten dokumen** (pdf-parse + Tesseract.js OCR, job `validate-extraction`) membandingkan angka dalam dokumen vs nilai dilaporkan |
+| F-05 | Target Silang Sektor (Cross-Cutting) | ✅ | `pohon-kinerja` (konfigurasi `crossCutting`) + `rekonsiliasi` (agregasi) | Tipe **Berbagi** (jumlah lintas OPD) dan **Terpisah** (per-variabel: `dijumlahkan` atau `ditunjuk` ke satu OPD); karena `VariableFinalValue` global per variabel+periode (bukan per-OPD seperti v1.0), approve pada mode `dijumlahkan` memicu agregasi ulang dari seluruh realisasi disetujui OPD kontributor |
+| F-06 | Manajemen Eskalasi Cerdas | ✅ | Job `escalate-stale-reviews` | Beroperasi di level `VariableRealization`; realisasi menunggu >5 hari (termasuk yang `ditandai_gagal_ekstrak`) dieskalasi ke seluruh akun Admin Perencana (role teknis `bapperida`) |
+| F-07 | Simulasi & What-If Analysis | ✅ | `apps/ops/.../simulasi` | Tidak berubah dari v1.0 — murni baca `targets`/`polarity`, tidak menyentuh Variable/formula |
+| F-08 | Rekonsiliasi & Mediasi Data (+ Override) | ✅ | `apps/ops/.../rekonsiliasi` | Approve/override sekarang menulis `VariableFinalValue` (global, bukan per-indikator/OPD) + `AuditLog` dalam transaksi MongoDB; alasan override ≥500 karakter tetap ditegakkan di server |
+| F-09 | Master Data Nomenklatur SIPD | ✅ | Terintegrasi di `.../tagging` | Tidak berubah secara konsep dari v1.0, kini juga mendeteksi perubahan pada baris level Rekening |
+| F-10 | Perangkat Daerah, Bidang Urusan & PD Eksternal | ✅ | `apps/ops/.../org-unit` | `bidangUrusanIds` (maks. 3, referensi ke master data `Urusan`/`BidangUrusan` baru) menggantikan `urusan` teks bebas v1.0; flag `isExternal` (PD Eksternal, mis. BPS) memakai role `pd_opd` yang sama persis, tanpa RBAC khusus |
+| F-11 | Tabel Data Dinamis & Ekspor Laporan | ✅ | `.../laporan` + `apps/eksekutif` | Baris laporan kini per-indikator, nilainya dihitung on-the-fly lewat `computeIndicatorValue()` — bukan query langsung ke tabel nilai final; ekspor CSV tetap, belum XLSX |
+| F-12 | Notifikasi & Smart Reminder | ✅ | `_components/NotificationBell.tsx` | Tidak berubah dari v1.0; ditambah notifikasi baru: realisasi butuh konfirmasi ulang PD (ekstraksi tidak cocok), realisasi rekening ter-tag yang realisasinya berubah |
+| — | Master Data Variable (baru) | ✅ | `apps/ops/.../variabel` | CRUD sederhana; Variable dipakai lintas Indicator lewat `formula[]` |
+| — | Tahun Aktif & Sumber Data Otomatis (baru) | ✅ (Tahun Aktif) / 🟡 (Satu Data/API) | `.../pengaturan` + `lib/data-sources/` + job `pull-external-sources` | Tahun Aktif berfungsi penuh (cache + invalidation); konektor Satu Data Boyolali masih **stub** (endpoint/kredensial belum tersedia) — struktur `DataSourceConnector` sudah siap, tinggal isi `fetchValue()` |
+| — | Dashboard Pimpinan (jalur baca) | ✅ | `apps/eksekutif` | Tidak berubah dari v1.0 — tetap hanya membaca `ReadmodelSnapshot` |
+| — | Sinkronisasi read-model (DDT 6.3) | ✅ | `apps/ops/src/worker/jobs/syncReadmodel.job.ts` | Dirombak total: `statusDistribution` dihitung dari `computeIndicatorValue()` per indikator SASARAN_PROGRAM (bukan baca `FinalValue` langsung); `paguTerTag` per tema dijumlah dari `partialAllocations` nominal Rupiah langsung |
 
-**Legenda:** ✅ = ada implementasi kerja, lolos `tsc --noEmit` + `next build`. Tidak ada modul berstatus ⬜ (belum dikerjakan) lagi — tapi lihat "Keterbatasan yang Diketahui" di bawah untuk kejujuran soal apa yang masih disederhanakan.
+**Legenda:** ✅ = ada implementasi kerja lengkap. 🟡 = struktur/interface sudah ada, implementasi konkret masih stub karena keterbatasan lingkungan (lihat "Keterbatasan yang Diketahui").
 
 ---
 
-## Verifikasi yang Sudah Dilakukan
+## Verifikasi yang Sudah (dan Belum) Dilakukan
 
-Setiap baris ✅ di atas sudah melewati:
+**PENTING — beda dari v1.0:** implementasi DDT v2.0 ini **belum sempat dijalankan lewat `npm run typecheck`/`npm run build`**, karena Node.js tidak terpasang di lingkungan tempat kode ini ditulis. Berbeda dari klaim "lolos tsc + next build" pada riwayat commit v1.0 (yang memang benar-benar dijalankan), baris-baris ✅ pada tabel di atas untuk perubahan DDT v2.0 merepresentasikan implementasi yang **konsisten secara desain dan sudah diperiksa manual** (kecocokan import/export antar `@simonev/db`, `@simonev/schemas`, dan setiap modul — lihat riwayat commit "Implement DDT v2.0"), **bukan** hasil kompilasi TypeScript yang terverifikasi. **Wajib** menjalankan `npm install && npm run typecheck && npm run build` di keempat workspace sebelum merge/deploy.
+
+Verifikasi v1.0 (masih berlaku untuk bagian kode yang tidak tersentuh DDT v2.0):
 ```bash
 npm run typecheck   # tsc --noEmit di keempat workspace
 npm run build       # next build sungguhan di apps/ops dan apps/eksekutif
 ```
-Bukan cuma "kelihatan benar" — build sempat gagal beberapa kali selama pengembangan karena isu produksi nyata yang kemudian diperbaiki:
-1. **Konflik Edge Runtime** di `middleware.ts` (argon2 & mongoose tidak jalan di Edge) — diperbaiki dengan pola `auth.config.ts` (Edge-safe) terpisah dari `auth.ts` (Node runtime penuh), sesuai rekomendasi resmi Auth.js.
-2. **Format PostCSS config** — harus CommonJS (`module.exports`), bukan ESM (`export default`), karena `package.json` tidak mendeklarasikan `"type": "module"`.
-
-**Catatan:** build `apps/ops` menampilkan satu *warning* (bukan error) soal modul opsional `supports-color` dari dependensi transitif `agenda` → `date.js` → `debug`. Kosmetik — tidak memengaruhi fungsi.
+Isu produksi yang pernah ditemukan & diperbaiki di v1.0 (masih relevan):
+1. **Konflik Edge Runtime** di `middleware.ts` (argon2 & mongoose tidak jalan di Edge) — diperbaiki dengan pola `auth.config.ts` (Edge-safe) terpisah dari `auth.ts` (Node runtime penuh).
+2. **Format PostCSS config** — harus CommonJS (`module.exports`), bukan ESM.
 
 ---
 
 ## Keterbatasan yang Diketahui (Jujur, Bukan Disembunyikan)
 
-Supaya tim yang melanjutkan tidak kaget, berikut yang **belum** ada meski semua modul F-xx sudah berstatus ✅:
+Supaya tim yang melanjutkan tidak kaget:
 
-1. **Formula capaian untuk target berbentuk rentang** (`apps/ops/src/lib/capaian.ts`) — RPJMD sering memuat target seperti "5,80-6,00"; fungsi ini memakai **batas bawah** sebagai pembanding (paling konservatif). Ini pilihan desain eksplisit, bukan satu-satunya kemungkinan — ganti kalau Bapperida punya konvensi lain (mis. titik tengah).
-2. **Tidak ada automated test** (unit/integration) sama sekali. Seluruh verifikasi sejauh ini adalah `tsc --noEmit` (kebenaran tipe) + `next build` (build sungguhan berhasil) — keduanya penting tapi TIDAK sama dengan pengujian perilaku/logika bisnis end-to-end. Rekomendasi: mulai dari Vitest untuk `apps/ops/src/lib/capaian.ts` dan `evidence-validation.ts` (fungsi murni, paling mudah ditest tanpa mock database).
-3. **Belum pernah dites terhadap MongoDB sungguhan** — seluruh kode ditulis & di-typecheck/build dengan benar, tapi lingkungan pengembangan ini tidak punya akses ke instance MongoDB nyata untuk uji end-to-end (submit → validasi → approve → dashboard ter-update). Sangat disarankan uji manual penuh sebelum go-live, terutama alur multi-document transaction F-08.
-4. **Tidak ada UI manajemen pengguna** — akun hanya bisa dibuat lewat `npm run seed` atau langsung ke database; F-10 (Perangkat Daerah) sudah ada UI tapi tidak untuk `User`.
-5. **Excel import (F-02) mengharapkan urutan kolom tetap** (Level, Kode SIPD, Kode Induk, Nama, Pagu, Kode SIPD OPD) — belum ada pemetaan kolom fleksibel atau validasi baris yang lebih toleran terhadap variasi format SIPD sungguhan.
-6. **F-11 baru CSV**, belum XLSX (meski ExcelJS sudah jadi dependency untuk F-02, belum dipakai untuk sisi ekspor).
-7. **CI/CD belum ada file konkret** — DDT Section 9 merekomendasikan GitHub Actions atau Gitea+Woodpecker, tapi belum ada file workflow sungguhan di repo ini.
-8. **Rate limiting** yang disebut di DDT Section 7 belum diimplementasikan.
+1. **Belum di-typecheck/build** (lihat Section "Verifikasi" di atas) — prioritas #1 sebelum kerja lanjutan apa pun.
+2. **Konektor Satu Data Boyolali masih stub** (`lib/data-sources/satuDataConnector.ts`) — mengembalikan `null` selalu, karena endpoint/kredensial sungguhan belum tersedia.
+3. **Job `pull-external-sources` belum mengikuti jendela Jadwal Pengisian Realisasi per indikator** — berjalan cron harian tetap sebagai penyederhanaan (lihat komentar di file job-nya), belum window-aware.
+4. **`computeIndicatorValue` metode `selisih`** memakai heuristik "jumlah komponen non-`pengurang` dikurangi jumlah `pengurang`" — DDT v2.0 tidak merinci lebih jauh; cek ulang kalau ada kasus formula selisih yang lebih kompleks dari A−B.
+5. **Formula capaian untuk target berbentuk rentang** (mis. "5,80-6,00") masih memakai batas bawah sebagai pembanding — sama seperti v1.0, keputusan desain eksplisit di `apps/ops/src/lib/capaian.ts`.
+6. **Tidak ada automated test** sama sekali — sama seperti v1.0. Rekomendasi: mulai dari Vitest untuk `computeIndicatorValue`, `calculateCapaian`, dan `document-extraction.ts` (fungsi murni).
+7. **Belum pernah dites terhadap MongoDB sungguhan** — sama seperti v1.0, plus alur baru (ekstraksi dokumen, cross-cutting split, konektor eksternal) belum pernah dicoba end-to-end sama sekali.
+8. **Tidak ada UI manajemen pengguna** — sama seperti v1.0.
+9. **Data referensi Urusan/Bidang Urusan di `seed.ts` bersifat ilustratif** — 9 Urusan & bidang turunannya disusun berdasarkan kategori umum UU 23/2014, BUKAN hasil verifikasi terhadap daftar resmi yang benar-benar dipakai Pemkab Boyolali. Ganti sebelum produksi.
+10. **F-11 baru CSV**, belum XLSX.
+11. **CI/CD belum ada file konkret.**
+12. **Rate limiting** belum diimplementasikan.
 
 ---
 
 ## Pola Kode untuk Melanjutkan
 
-Setiap gaya modul di atas punya contoh lengkap untuk ditiru:
-- **CRUD + hierarki sederhana** → F-01 (`pohon-kinerja/`)
-- **Transaksi MongoDB multi-dokumen** → F-08 (`rekonsiliasi/actions.ts`, fungsi `overrideFinalValue`)
-- **Job asinkron Agenda.js dipicu dari Server Action** → F-04 (`validateEvidence.job.ts` + `input-data/actions.ts`)
+- **Formula & kalkulasi nilai indikator dari Variable** → `apps/ops/src/lib/capaian.ts` (`computeIndicatorValue`), dipakai `syncReadmodel.job.ts` dan `laporan/actions.ts`
+- **CRUD master data sederhana** → F-10 (`org-unit/`) atau Variable (`variabel/`)
+- **Transaksi MongoDB multi-dokumen** → F-08 (`rekonsiliasi/actions.ts`, fungsi `reviewVariableRealization`/`overrideVariableFinalValue`)
+- **Job berantai (job memicu job lain lewat `agenda.now`)** → F-04 (`validateEvidence.job.ts` → `validateExtraction.job.ts`) dan F-08 (`recomputeIndicatorValue.job.ts`)
 - **Cascade/read-time-computation + copy-advice antar tahun** → F-02 (`tagging/actions.ts`, `Tagging.ts`)
+- **Pola connector-per-sumber untuk integrasi eksternal** → `lib/data-sources/registry.ts`
 - **Notifikasi in-app+email best-effort** → F-12 (`lib/notify.ts`)
-- **Penjadwalan lintas-modul** (satu model dipakai 2 scope berbeda) → F-03 (`Schedule.ts`, `jadwal/actions.ts`)
-- **Komputasi murni tanpa efek samping ke DB** → F-07 (`simulasi/actions.ts`)
+- **Penjadwalan lintas-modul** (satu model dipakai banyak scope) → F-03 (`Schedule.ts`, `jadwal/actions.ts`)
 - **Route Handler streaming file** → F-11 (`api/export/final-values/route.ts`)
