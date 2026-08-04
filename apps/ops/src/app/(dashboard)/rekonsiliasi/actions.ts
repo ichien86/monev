@@ -87,7 +87,12 @@ export async function reviewVariableRealization(input: ReviewVariableRealization
   const splitEntry = indicator?.crossCutting?.splitConfig?.find(
     (s) => s.variableId.toString() === realization.variableId.toString()
   );
-  const isSummed = splitEntry?.mode === "dijumlahkan";
+  // F-05 — Tipe "berbagi" (README: "jumlah lintas OPD") selalu dijumlahkan
+  // lintas seluruh PD kontributor; splitConfig hanya diisi untuk Tipe
+  // "terpisah" (lihat IndicatorForm.tsx), jadi TIDAK bisa dipakai sebagai
+  // satu-satunya sinyal — kalau tidak, approval "berbagi" cuma menimpa
+  // nilai final dengan realisasi PD yang approve terakhir, bukan menjumlah.
+  const isSummed = indicator?.crossCutting?.type === "berbagi" || splitEntry?.mode === "dijumlahkan";
 
   const connection = await connectCore();
   const dbSession = await connection.startSession();
