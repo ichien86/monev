@@ -1,6 +1,6 @@
 import { listReportableVariables, listMyRealizations } from "./actions";
 import { RealizationForm } from "./RealizationForm";
-import { RealizationStatusBadge } from "./RealizationStatusBadge";
+import { RealizationStatusCell } from "./RealizationStatusCell";
 
 export default async function InputDataPage() {
   const [options, realizations] = await Promise.all([listReportableVariables(), listMyRealizations()]);
@@ -42,7 +42,7 @@ export default async function InputDataPage() {
                 </td>
                 <td className="px-5 py-3 font-mono">{r.reportedValue}</td>
                 <td className="px-5 py-3">
-                  <RealizationStatusBadge status={r.status} />
+                  <RealizationStatusCell id={r._id.toString()} status={r.status} />
                 </td>
               </tr>
             ))}

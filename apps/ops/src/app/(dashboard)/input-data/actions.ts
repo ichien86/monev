@@ -184,3 +184,37 @@ export async function listMyRealizations() {
     .populate("indicatorId", "label")
     .lean();
 }
+
+/**
+ * DDT v2.0 Section 3.4 — jalan keluar untuk status "menunggu_konfirmasi_pd"
+ * (ekstraksi dokumen TIDAK menemukan angka yang cocok dengan reportedValue).
+ * Sebelum ini ditambahkan, status tersebut adalah jalan buntu: badge-nya
+ * sudah berbunyi "Menunggu Konfirmasi Anda" tapi tidak ada aksi apa pun yang
+ * bisa memicu transisinya, DAN createVariableRealization menolak kiriman
+ * baru untuk variabel+periode yang sama selama status realisasi lama bukan
+ * "ditolak" — jadi PD terkunci permanen dari variabel+periode itu begitu
+ * ekstraksi salah mendeteksi mismatch (termasuk mismatch PALSU akibat
+ * flakiness pdf-parse, lihat document-extraction.ts). PD menegaskan nilainya
+ * tetap benar walau tidak match otomatis; realisasi lanjut ke antrean review
+ * substansi Admin Perencana (perlakuan sama seperti ditandai_gagal_ekstrak).
+ */
+export async function confirmMismatchedRealization(realizationId: string): Promise<ActionResult> {
+  const session = await auth();
+  if (session?.user.role !== "pd_opd" || !session.user.workUnitId) {
+    return { ok: false, error: "Hanya operator PD yang dapat mengonfirmasi realisasi." };
+  }
+
+  const VariableRealizationModel = await getVariableRealizationModel();
+  const realization = await VariableRealizationModel.findOne({
+    _id: realizationId,
+    workUnitId: session.user.workUnitId,
+  });
+  if (!realization || realization.status !== "menunggu_konfirmasi_pd") {
+    return { ok: false, error: "Realisasi tidak ditemukan atau tidak sedang menunggu konfirmasi." };
+  }
+
+  realization.status = "menunggu_admin_perencana";
+  await realization.save();
+
+  return { ok: true, data: undefined };
+}
