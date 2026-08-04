@@ -14,7 +14,21 @@ export async function listMyNotifications() {
     NotificationModel.find({ userId: session.user.id }).sort({ createdAt: -1 }).limit(20).lean(),
     NotificationModel.countDocuments({ userId: session.user.id, isRead: false }),
   ]);
-  return { items, unreadCount };
+  // Server Actions hanya boleh mengembalikan plain object -- ObjectId (_id,
+  // userId) dari .lean() bukan plain object walau punya toJSON, jadi harus
+  // dikonversi manual (bukan asumsi .lean() sudah cukup "plain").
+  return {
+    items: items.map((n) => ({
+      _id: n._id.toString(),
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      link: n.link,
+      isRead: n.isRead,
+      createdAt: n.createdAt.toISOString(),
+    })),
+    unreadCount,
+  };
 }
 
 export async function markNotificationRead(notificationId: string): Promise<ActionResult> {
