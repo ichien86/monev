@@ -14,12 +14,12 @@ const { auth } = NextAuth(authConfig);
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    return new NextResponse("Method Not Allowed — aplikasi ini bersifat view-only.", { status: 405 });
-  }
-
   if (pathname === "/login" || pathname.startsWith("/api/auth")) {
     return NextResponse.next();
+  }
+
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new NextResponse("Method Not Allowed — aplikasi ini bersifat view-only.", { status: 405 });
   }
 
   const session = req.auth;

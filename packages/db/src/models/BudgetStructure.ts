@@ -2,14 +2,15 @@ import { Schema, type InferSchemaType, type Connection, type Model } from "mongo
 import { connectCore } from "../connection";
 
 /**
- * F-02 — prasyarat tagging (PRD 5.6): struktur anggaran Program/Kegiatan/
- * Subkegiatan hasil impor SIPD, sampai level rekening belanja (pagu per
- * tahun). Materialized `path` dipakai persis seperti di Indicator.ts —
- * supaya menghitung "tagging mana saja yang efektif berlaku di subkegiatan X"
- * (termasuk yang diwariskan dari cascade Program/Kegiatan) cukup satu query,
- * lihat catatan lengkap di Tagging.ts.
+ * F-02 — prasyarat tagging (PRD 5.6, revisi DDT v2.0 Section 2.6): struktur
+ * anggaran Program/Kegiatan/Subkegiatan/Rekening hasil impor Laporan
+ * Realisasi (granularitas Rekening — lihat DDT v2.0 Section 3.6, mengganti
+ * impor SIPD level-Program v1.0). Materialized `path` dipakai persis seperti
+ * di Indicator.ts — supaya menghitung "tagging mana saja yang efektif
+ * berlaku di rekening X" (termasuk yang diwariskan dari cascade Program/
+ * Kegiatan/Subkegiatan) cukup satu query, lihat catatan lengkap di Tagging.ts.
  */
-export const BUDGET_STRUCTURE_LEVELS = ["program", "kegiatan", "subkegiatan"] as const;
+export const BUDGET_STRUCTURE_LEVELS = ["program", "kegiatan", "subkegiatan", "rekening"] as const;
 export type BudgetStructureLevel = (typeof BUDGET_STRUCTURE_LEVELS)[number];
 
 const budgetStructureSchema = new Schema(
@@ -22,6 +23,11 @@ const budgetStructureSchema = new Schema(
     name: { type: String, required: true, trim: true },
     budgetYear: { type: Number, required: true },
     pagu: { type: Number, required: true },
+    // DDT v2.0 Section 2.6 — BARU, field yang sebelumnya tidak ada sama
+    // sekali di v1.0. Diisi langsung dari impor Laporan Realisasi bersamaan
+    // dengan pagu (bukan dua langkah impor terpisah).
+    realisasi: { type: Number, default: 0 },
+    realisasiUpdatedAt: { type: Date, default: null },
     ownerWorkUnitId: { type: Schema.Types.ObjectId, ref: "OrgUnit", default: null },
   },
   { timestamps: true }

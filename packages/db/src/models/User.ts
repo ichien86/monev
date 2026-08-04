@@ -11,7 +11,11 @@ export type UserRole = (typeof USER_ROLES)[number];
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    // DDT v2.0 Section 2.10 — kredensial login PRIMER (PRD 2.1), unique.
+    username: { type: String, required: true, lowercase: true, trim: true },
+    // Diubah dari required jadi OPSIONAL — hanya untuk notifikasi F-12
+    // (bukan lagi index unique primer untuk login, lihat index partial di bawah).
+    email: { type: String, default: null, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false }, // Argon2, lihat DDT Section 7
     role: { type: String, enum: USER_ROLES, required: true },
     // Diisi untuk role "pd_opd": OPD tempat pengguna bertugas (relasi ke OrgUnit).
@@ -21,6 +25,14 @@ const userSchema = new Schema(
   { timestamps: true }
 );
 
+userSchema.index({ username: 1 }, { unique: true });
+// Partial unique index — hanya menegakkan keunikan untuk dokumen yang
+// benar-benar mengisi email (mengabaikan dokumen dengan email: null),
+// karena field ini sekarang opsional.
+userSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { email: { $type: "string" } } }
+);
 userSchema.index({ role: 1, isActive: 1 });
 
 export type UserDoc = InferSchemaType<typeof userSchema>;

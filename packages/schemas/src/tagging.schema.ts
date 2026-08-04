@@ -9,12 +9,19 @@ export const createThemeSchema = z.object({
 });
 export type CreateThemeInput = z.infer<typeof createThemeSchema>;
 
+/**
+ * DDT v2.0 Section 2.6/3.6 — parser impor Laporan Realisasi granularitas
+ * Rekening, mengisi `pagu`+`realisasi` sekaligus. Menggantikan impor SIPD
+ * level-Program (v1.0). Kolom Fungsi/Sub Fungsi diabaikan (tidak dipetakan);
+ * Sub-SKPD dipetakan ke `ownerWorkUnitSipdCode` PD induknya (Kode SKPD).
+ */
 export const budgetStructureRowSchema = z.object({
-  level: z.enum(["program", "kegiatan", "subkegiatan"]),
+  level: z.enum(["program", "kegiatan", "subkegiatan", "rekening"]),
   sipdCode: z.string().trim().min(1),
   parentSipdCode: z.string().trim().nullable(),
   name: z.string().trim().min(1),
   pagu: z.number().nonnegative(),
+  realisasi: z.number().nonnegative().default(0),
   ownerWorkUnitSipdCode: z.string().trim().nullable().optional(),
 });
 export type BudgetStructureRow = z.infer<typeof budgetStructureRowSchema>;
@@ -25,23 +32,26 @@ export const importBudgetStructureSchema = z.object({
 });
 export type ImportBudgetStructureInput = z.infer<typeof importBudgetStructureSchema>;
 
-/**
- * F-02 — pembuatan tagging (PRD 5.6). `coveragePercent` sengaja TIDAK
- * diminta di sini walau `coverage === "sebagian"` — proporsi baru dientri PD
- * saat realisasi (skema terpisah: enterSplitCoverageSchema), bukan saat
- * Bapperida pertama kali membuat tag.
- */
 export const createTaggingSchema = z.object({
   themeId: z.string(),
   budgetStructureId: z.string(),
   budgetYear: z.number().int().min(2020).max(2100),
   coverage: z.enum(["penuh", "sebagian"]),
-  requiresSubTagging: z.boolean().default(false),
 });
 export type CreateTaggingInput = z.infer<typeof createTaggingSchema>;
 
-export const enterSplitCoverageSchema = z.object({
-  taggingId: z.string(),
-  coveragePercent: z.number().min(0).max(100),
+/**
+ * DDT v2.0 Section 2.7 — menggantikan enterSplitCoverageSchema (persentase
+ * tunggal, v1.0). Untuk coverage="sebagian": daftar rekening + nominal
+ * Rupiah per rekening (PRD 5.7.3).
+ */
+export const partialAllocationEntrySchema = z.object({
+  rekeningStructureId: z.string(),
+  amountRupiah: z.number().nonnegative(),
 });
-export type EnterSplitCoverageInput = z.infer<typeof enterSplitCoverageSchema>;
+
+export const setPartialAllocationsSchema = z.object({
+  taggingId: z.string(),
+  allocations: z.array(partialAllocationEntrySchema).min(1, "Minimal satu alokasi rekening"),
+});
+export type SetPartialAllocationsInput = z.infer<typeof setPartialAllocationsSchema>;

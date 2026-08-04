@@ -1,7 +1,8 @@
 import { z } from "zod";
 
+/** DDT v2.0 Section 2.12 — scope "entri_split_tagging" dihapus, dua scope baru ditambah. */
 export const createScheduleSchema = z.object({
-  scope: z.enum(["pelaporan_indikator", "entri_split_tagging"]),
+  scope: z.enum(["pelaporan_indikator", "penentuan_target", "penutupan_tahun"]),
   refId: z.string(),
   periodYear: z.number().int().min(2020).max(2100),
   periodLabel: z.string().trim().min(1),

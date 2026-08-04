@@ -6,7 +6,7 @@ import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { ThemeManager } from "./ThemeManager";
 import { BudgetTree } from "./BudgetTree";
 import { CreateTaggingModal } from "./CreateTaggingModal";
-import { SplitEntryModal } from "./SplitEntryModal";
+import { PartialAllocationModal } from "./PartialAllocationModal";
 import { ExcelImportButton } from "./ExcelImportButton";
 import { seedExampleBudgetStructure, copyTaggingsFromPreviousYear } from "./actions";
 
@@ -17,23 +17,35 @@ type EffectiveTag = {
   themeName: string;
   colorHex: string;
   coverage: "penuh" | "sebagian";
-  coveragePercent: number | null;
+  amountRupiah: number | null;
   inheritedFromName: string | null;
+};
+type SubkegiatanTag = {
+  taggingId: string;
+  themeId: string;
+  themeName: string;
+  colorHex: string;
+  coverage: "penuh" | "sebagian";
+  allocatedCount: number;
+  allocatedTotal: number;
 };
 type BudgetNode = {
   _id: string;
   level: string;
   name: string;
   pagu: number;
+  realisasi: number;
   ownerWorkUnitId: string | null;
   children: BudgetNode[];
   tags?: EffectiveTag[];
+  subkegiatanTags?: SubkegiatanTag[];
 };
 
 function filterTreeByTema(nodes: BudgetNode[], active: Set<string>): BudgetNode[] {
   return nodes.map((n) => ({
     ...n,
     tags: n.tags?.filter((t) => active.has(t.themeId)),
+    subkegiatanTags: n.subkegiatanTags?.filter((t) => active.has(t.themeId)),
     children: filterTreeByTema(n.children, active),
   }));
 }
@@ -54,7 +66,7 @@ export function TaggingClient({
   const router = useRouter();
   const [activeTema, setActiveTema] = useState<Set<string>>(new Set(themes.map((t) => t._id)));
   const [tagTarget, setTagTarget] = useState<BudgetNode | null>(null);
-  const [splitTarget, setSplitTarget] = useState<EffectiveTag | null>(null);
+  const [allocationTarget, setAllocationTarget] = useState<{ taggingId: string; themeName: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -129,16 +141,16 @@ export function TaggingClient({
           tree={filteredTree}
           myWorkUnitId={myWorkUnitId}
           onTagNode={(node) => canManage && setTagTarget(node)}
-          onEnterSplit={(tag) => setSplitTarget(tag)}
+          onEditAllocation={(_node, tag) => setAllocationTarget({ taggingId: tag.taggingId, themeName: tag.themeName })}
         />
       </div>
 
       <div className="flex items-start gap-3 p-4 rounded-xl bg-primary-tint">
         <Info size={16} className="text-primary mt-0.5 shrink-0" />
         <div className="text-[12.5px] text-primary-deep leading-relaxed">
-          Prasyarat: struktur anggaran (Program/Kegiatan/Subkegiatan) harus diimpor dari SIPD
-          sebelum tagging dimulai (PRD 5.6). Klik ikon tag pada baris untuk menandai node dengan
-          tema.
+          Prasyarat: struktur anggaran (Program/Kegiatan/Subkegiatan/Rekening) harus diimpor dari
+          Laporan Realisasi sebelum tagging dimulai (PRD 5.7). Klik ikon tag pada baris subkegiatan
+          untuk menandai dengan tema.
         </div>
       </div>
       <div className="flex items-start gap-3 p-4 rounded-xl bg-accent-tint">
@@ -162,14 +174,13 @@ export function TaggingClient({
         />
       )}
 
-      {splitTarget && (
-        <SplitEntryModal
-          taggingId={splitTarget.taggingId}
-          themeName={splitTarget.themeName}
-          currentPercent={splitTarget.coveragePercent}
-          onClose={() => setSplitTarget(null)}
+      {allocationTarget && (
+        <PartialAllocationModal
+          taggingId={allocationTarget.taggingId}
+          themeName={allocationTarget.themeName}
+          onClose={() => setAllocationTarget(null)}
           onDone={() => {
-            setSplitTarget(null);
+            setAllocationTarget(null);
             router.refresh();
           }}
         />

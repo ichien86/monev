@@ -9,8 +9,8 @@ export default async function RekonsiliasiPage() {
       <div className="mb-6">
         <h1 className="font-display text-xl font-semibold text-ink">Rekonsiliasi & Approval</h1>
         <p className="text-sm text-muted mt-1">
-          Review substansi bukti dan penetapan nilai final (F-08). Tidak ada ranking sumber
-          otomatis — semua submission diperlakukan setara (PRD 5.3).
+          Review substansi bukti dan penetapan nilai final variabel (F-08, DDT v2.0 Section
+          3.1/3.3). Tidak ada ranking sumber otomatis — semua realisasi diperlakukan setara (PRD 5.3).
         </p>
       </div>
       <RekonClient

@@ -1,123 +1,143 @@
 import type Agenda from "agenda";
 import {
   getIndicatorModel,
-  getFinalValueModel,
-  getSubmissionModel,
+  getVariableFinalValueModel,
   getReadmodelSnapshotModel,
   getThemeModel,
   getTaggingModel,
   getBudgetStructureModel,
 } from "@simonev/db";
-import { calculateCapaian, resolveTargetForYear, parseNumeric } from "@/lib/capaian";
+import { calculateCapaian, resolveTargetForYear, computeIndicatorValue, representativeValueForYear } from "@/lib/capaian";
+import { getTahunAktif } from "@/lib/system-setting";
 
 /**
  * Menghitung agregat dari simonev_core dan menulis SATU dokumen snapshot baru
- * ke simonev_readmodel (DDT Section 6.3). SIMONEV Eksekutif hanya membaca
- * dokumen terbaru dari koleksi ini — tidak pernah menjalankan agregasi sendiri.
+ * ke simonev_readmodel (DDT Section 6.3). SIMONEV Eksekutif TIDAK PERNAH
+ * menjalankan agregasi langsung ke data transaksi — hanya membaca dokumen
+ * terbaru dari koleksi ini.
+ *
+ * DDT v2.0 — dirombak total: nilai indikator sekarang SELALU turunan dari
+ * VariableFinalValue lewat computeIndicatorValue() (DDT 3.2), bukan dibaca
+ * langsung dari FinalValue level-indikator (v1.0, sudah dihapus).
  */
 export const SYNC_READMODEL_JOB = "sync-readmodel";
 
 export function defineSyncReadmodelJob(agenda: Agenda) {
   agenda.define(SYNC_READMODEL_JOB, async () => {
     const IndicatorModel = await getIndicatorModel();
-    const FinalValueModel = await getFinalValueModel();
-    const SubmissionModel = await getSubmissionModel();
+    const VariableFinalValueModel = await getVariableFinalValueModel();
     const SnapshotModel = await getReadmodelSnapshotModel();
     const ThemeModel = await getThemeModel();
     const TaggingModel = await getTaggingModel();
     const BudgetStructureModel = await getBudgetStructureModel();
 
-    const currentYear = new Date().getFullYear();
+    const tahunAktif = await getTahunAktif();
 
     const [sasaranStrategisDaerah, indikatorUtama, programIndicators] = await Promise.all([
       IndicatorModel.countDocuments({ tier: "SASARAN_STRATEGIS_DAERAH", isActive: true }),
       IndicatorModel.countDocuments({ classificationTags: "IKU", isActive: true }),
       IndicatorModel.find({ tier: "SASARAN_PROGRAM", isActive: true })
-        .select("_id targets polarity allowOverachievement calculationMethod")
+        .select("_id formula categories calculationMethod targets polarity allowOverachievement rpjmdCumulative")
         .lean(),
     ]);
     const programPerangkatDaerah = programIndicators.length;
 
-    // F-08/F-11 — Kalkulasi Capaian (PRD 5.5). Untuk setiap indikator Sasaran
-    // Program yang punya FinalValue tahun berjalan, hitung capaian% nyata
-    // (mempertimbangkan polaritas & capping overachievement) lewat
-    // apps/ops/src/lib/capaian.ts. Indikator "kumulatif" dijumlahkan dari
-    // seluruh FinalValue tahun berjalan; selain itu memakai FinalValue
-    // periode terakhir (diasumsikan dokumen paling baru diinput = periode
-    // terakhir, karena Submission/FinalValue tidak menyimpan urutan periode
-    // eksplisit di luar label teks — batasan yang sama diwarisi dari PRD 5.4).
-    const indicatorsById = new Map(programIndicators.map((i) => [i._id.toString(), i]));
-    const finalValuesThisYear = await FinalValueModel.find({
-      periodYear: currentYear,
-      indicatorId: { $in: programIndicators.map((i) => i._id) },
+    // Ambil seluruh VariableFinalValue tahun berjalan untuk variabel yang
+    // dipakai formula indikator-indikator ini (satu query, bukan per-indikator).
+    const allVariableIds = Array.from(
+      new Set(programIndicators.flatMap((i) => i.formula.map((f) => f.variableId.toString())))
+    );
+    const finalValuesThisYear = await VariableFinalValueModel.find({
+      periodYear: tahunAktif,
+      variableId: { $in: allVariableIds },
     })
       .sort({ approvedAt: 1 })
       .lean();
 
-    const valuesByIndicator = new Map<string, typeof finalValuesThisYear>();
+    const valuesByVariable = new Map<string, typeof finalValuesThisYear>();
     for (const fv of finalValuesThisYear) {
-      const key = fv.indicatorId.toString();
-      if (!valuesByIndicator.has(key)) valuesByIndicator.set(key, []);
-      valuesByIndicator.get(key)!.push(fv);
+      const key = fv.variableId.toString();
+      if (!valuesByVariable.has(key)) valuesByVariable.set(key, []);
+      valuesByVariable.get(key)!.push(fv);
     }
 
     let tercapai = 0;
     let proses = 0;
     let belumTercapai = 0;
+    let belumLaporPeriodeIni = 0;
 
-    for (const [indicatorId, values] of valuesByIndicator) {
-      const indicator = indicatorsById.get(indicatorId);
-      if (!indicator) continue;
+    for (const indicator of programIndicators) {
+      const finalValuesByVariableId = new Map<string, string>();
+      for (const entry of indicator.formula) {
+        const key = entry.variableId.toString();
+        const representative = representativeValueForYear(
+          valuesByVariable.get(key) ?? [],
+          indicator.rpjmdCumulative
+        );
+        if (representative !== null) finalValuesByVariableId.set(key, representative);
+      }
 
-      const isCumulative = indicator.calculationMethod === "sum";
-      const representativeValue = isCumulative
-        ? values.reduce((sum, v) => sum + (parseNumeric(v.value) ?? 0), 0).toString()
-        : values[values.length - 1].value; // periode terakhir (lihat catatan di atas)
-
-      const target = resolveTargetForYear(
-        (indicator.targets ?? []).map((t) => ({ year: t.year, value: t.value })),
-        currentYear
+      const computed = computeIndicatorValue(
+        {
+          calculationMethod: indicator.calculationMethod,
+          formula: indicator.formula.map((f) => ({
+            variableId: f.variableId.toString(),
+            role: f.role,
+            weight: f.weight ?? null,
+          })),
+          categories: indicator.categories,
+        },
+        finalValuesByVariableId
       );
-      if (!target) continue;
+      if (!computed || computed.status === "belum_lengkap") {
+        belumLaporPeriodeIni += 1;
+        continue;
+      }
 
-      const result = calculateCapaian(
-        representativeValue,
-        target,
-        (indicator.polarity as "positive" | "negative") ?? "positive",
-        indicator.allowOverachievement ?? false
-      );
-      if (!result) continue;
+      let capaianPercent: number;
+      if (computed.kind === "kategorikal") {
+        capaianPercent = computed.capaianPercent;
+      } else {
+        const target = resolveTargetForYear(
+          (indicator.targets ?? []).map((t) => ({ year: t.year, value: t.value })),
+          tahunAktif
+        );
+        if (!target) continue;
+        const result = calculateCapaian(
+          computed.value,
+          target,
+          (indicator.polarity as "positive" | "negative") ?? "positive",
+          indicator.allowOverachievement ?? false
+        );
+        if (!result) continue;
+        capaianPercent = result.capaianPercent;
+      }
 
-      if (result.status === "tercapai") tercapai += 1;
-      else if (result.status === "proses") proses += 1;
+      if (capaianPercent >= 100) tercapai += 1;
+      else if (capaianPercent >= 75) proses += 1;
       else belumTercapai += 1;
     }
 
-    const reportedIndicatorIds = await SubmissionModel.distinct("indicatorId", {
-      periodYear: currentYear,
-      status: { $in: ["menunggu_bapperida", "disetujui"] },
-    });
-    const belumLaporPeriodeIni = await IndicatorModel.countDocuments({
-      tier: "SASARAN_PROGRAM",
-      isActive: true,
-      _id: { $nin: reportedIndicatorIds },
-    });
-
-    // F-02: rekap pagu ter-tag per tema (PRD 5.6) — SENGAJA tidak di-dedup
-    // lintas tema (overlap dipertahankan apa adanya, lihat Tagging.ts).
+    // F-02/F-07 — rekap pagu+realisasi ter-tag per tema (PRD 5.6/5.7).
+    // DDT v2.0 — `partialAllocations` sudah berupa nominal Rupiah langsung
+    // (bukan persentase dari pagu lagi), jadi tidak perlu lagi mengalikan
+    // dengan pagu induk. SENGAJA tidak di-dedup lintas tema (overlap
+    // dipertahankan apa adanya, lihat Tagging.ts).
     const [themes, taggings, structures] = await Promise.all([
       ThemeModel.find({ isActive: true }).lean(),
-      TaggingModel.find({ budgetYear: currentYear }).lean(),
-      BudgetStructureModel.find({ budgetYear: currentYear }).select("pagu").lean(),
+      TaggingModel.find({ budgetYear: tahunAktif }).lean(),
+      BudgetStructureModel.find({ budgetYear: tahunAktif }).select("pagu").lean(),
     ]);
     const paguByStructureId = new Map(structures.map((s) => [s._id.toString(), s.pagu]));
 
     const temaSummary = themes.map((theme) => {
       const themeTaggings = taggings.filter((t) => t.themeId.toString() === theme._id.toString());
       const paguTerTag = themeTaggings.reduce((sum, t) => {
-        const pagu = paguByStructureId.get(t.budgetStructureId.toString()) ?? 0;
-        if (t.coverage === "penuh") return sum + pagu;
-        return sum + pagu * ((t.coveragePercent ?? 0) / 100);
+        if (t.coverage === "penuh") {
+          return sum + (paguByStructureId.get(t.budgetStructureId.toString()) ?? 0);
+        }
+        const partialSum = (t.partialAllocations ?? []).reduce((s, a) => s + a.amountRupiah, 0);
+        return sum + partialSum;
       }, 0);
       return {
         themeId: theme._id,

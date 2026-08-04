@@ -1,11 +1,15 @@
 import { auth } from "@/auth";
-import { getIndicatorTree } from "./actions";
+import { getIndicatorTree, listVariablesForFormula, listBudgetProgramsForYear } from "./actions";
 import { PohonKinerjaClient } from "./PohonKinerjaClient";
 import { getOrgUnitModel } from "@simonev/db";
 
 export default async function PohonKinerjaPage() {
   const session = await auth();
-  const tree = await getIndicatorTree();
+  const [tree, variables, budgetPrograms] = await Promise.all([
+    getIndicatorTree(),
+    listVariablesForFormula(),
+    listBudgetProgramsForYear(),
+  ]);
   const canEdit = session?.user.role === "bapperida" || session?.user.role === "admin_sistem";
 
   const OrgUnitModel = await getOrgUnitModel();
@@ -27,6 +31,8 @@ export default async function PohonKinerjaPage() {
         tree={JSON.parse(JSON.stringify(tree))}
         canEdit={canEdit}
         orgUnits={JSON.parse(JSON.stringify(orgUnits))}
+        variables={JSON.parse(JSON.stringify(variables))}
+        budgetPrograms={JSON.parse(JSON.stringify(budgetPrograms))}
       />
     </div>
   );

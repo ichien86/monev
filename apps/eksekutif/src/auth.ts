@@ -25,16 +25,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: "Email", type: "email" },
+        username: { label: "Username", type: "text" },
         password: { label: "Kata Sandi", type: "password" },
       },
       async authorize(rawCredentials) {
         const parsed = loginSchema.safeParse(rawCredentials);
         if (!parsed.success) return null;
-        const { email, password } = parsed.data;
+        const { username, password } = parsed.data;
 
         const UserModel = await getUserModel();
-        const user = await UserModel.findOne({ email, isActive: true, role: "pimpinan" }).select(
+        const user = await UserModel.findOne({ username, isActive: true, role: "pimpinan" }).select(
           "+passwordHash"
         );
         if (!user) return null;
@@ -45,7 +45,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return {
           id: user._id.toString(),
           name: user.name,
-          email: user.email,
+          username: user.username,
           role: user.role,
         };
       },

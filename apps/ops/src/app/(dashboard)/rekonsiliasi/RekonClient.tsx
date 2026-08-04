@@ -2,29 +2,31 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, CheckCircle2, ShieldCheck, Info, Users } from "lucide-react";
-import { reviewSubmission, overrideFinalValue, listSiblingSubmissions } from "./actions";
+import { Link2, CheckCircle2, ShieldCheck, Info, Users, AlertTriangle } from "lucide-react";
+import { reviewVariableRealization, overrideVariableFinalValue, listSiblingRealizations } from "./actions";
 
 type QueueItem = {
   _id: string;
-  indicatorId?: { _id?: string; label?: string } | null;
+  status: string;
+  variableId?: { _id?: string; name?: string; unit?: string } | null;
+  indicatorId?: { label?: string } | null;
   workUnitId?: { name?: string } | null;
   periodLabel: string;
   periodYear: number;
   reportedValue: string;
-  evidenceLink: string;
+  evidenceLink: string | null;
   escalatedAt?: string | null;
 };
 
 type FinalValueItem = {
   _id: string;
-  indicatorId?: { label?: string } | null;
+  variableId?: { name?: string; unit?: string } | null;
   periodLabel: string;
   periodYear: number;
   value: string;
 };
 
-type SiblingSubmission = {
+type SiblingRealization = {
   _id: string;
   workUnitId?: { name?: string } | null;
   reportedValue: string;
@@ -38,32 +40,32 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
   const [rejectionNote, setRejectionNote] = useState("");
   const [overrideTarget, setOverrideTarget] = useState<FinalValueItem | null>(null);
   const [busy, setBusy] = useState(false);
-  const [siblings, setSiblings] = useState<SiblingSubmission[]>([]);
+  const [siblings, setSiblings] = useState<SiblingRealization[]>([]);
   const [isCrossCutting, setIsCrossCutting] = useState(false);
 
   const current = queue.find((q) => q._id === selectedId) ?? null;
 
   useEffect(() => {
-    if (!current?.indicatorId?._id) {
+    if (!current?.variableId?._id) {
       setSiblings([]);
       setIsCrossCutting(false);
       return;
     }
-    listSiblingSubmissions(current.indicatorId._id, current.periodYear, current.periodLabel, current._id).then(
+    listSiblingRealizations(current.variableId._id, current.periodYear, current.periodLabel, current._id).then(
       (result) => {
         setIsCrossCutting(result.isCrossCutting);
-        setSiblings(result.siblings as unknown as SiblingSubmission[]);
+        setSiblings(result.siblings as unknown as SiblingRealization[]);
       }
     );
   }, [current?._id]);
 
-  const decide = async (decision: "disetujui" | "ditolak_bapperida") => {
+  const decide = async (decision: "disetujui" | "ditolak") => {
     if (!current) return;
     setBusy(true);
-    await reviewSubmission({
-      submissionId: current._id,
+    await reviewVariableRealization({
+      realizationId: current._id,
       decision,
-      rejectionNote: decision === "ditolak_bapperida" ? rejectionNote : undefined,
+      rejectionNote: decision === "ditolak" ? rejectionNote : undefined,
     });
     setBusy(false);
     setRejecting(false);
@@ -76,7 +78,7 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
     <div className="flex flex-col gap-8">
       <div>
         <div className="text-xs font-mono text-muted uppercase tracking-wide mb-3">
-          Antrean Review Substansi Bapperida
+          Antrean Review Substansi Admin Perencana
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -89,16 +91,21 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
                 onClick={() => setSelectedId(q._id)}
                 className={`w-full text-left px-4 py-3.5 block border-b border-border ${selectedId === q._id ? "bg-primary-tint" : ""}`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-ink">{q.indicatorId?.label ?? "—"}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-ink">{q.variableId?.name ?? "—"}</span>
                   {q.escalatedAt && (
                     <span className="font-mono text-[9.5px] font-semibold text-danger bg-danger-tint px-1.5 py-0.5 rounded">
                       ESKALASI
                     </span>
                   )}
+                  {q.status === "ditandai_gagal_ekstrak" && (
+                    <span className="font-mono text-[9.5px] font-semibold text-accent bg-accent-tint px-1.5 py-0.5 rounded">
+                      EKSTRAKSI GAGAL
+                    </span>
+                  )}
                 </div>
                 <div className="font-mono text-[11px] text-muted mt-1">
-                  {q.workUnitId?.name ?? "—"} · {q.periodLabel} {q.periodYear}
+                  {q.indicatorId?.label ?? "—"} · {q.workUnitId?.name ?? "—"} · {q.periodLabel} {q.periodYear}
                 </div>
               </button>
             ))}
@@ -109,7 +116,8 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
               <div className="text-sm text-faint">Pilih item dari antrean untuk melihat detail.</div>
             ) : (
               <>
-                <div className="text-base font-semibold text-ink">{current.indicatorId?.label}</div>
+                <div className="text-base font-semibold text-ink">{current.variableId?.name}</div>
+                <div className="text-xs text-muted mt-0.5">{current.indicatorId?.label}</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4">
                   <div>
                     <div className="text-[10px] font-mono text-muted uppercase">PD Pengusul</div>
@@ -123,34 +131,49 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
                   </div>
                   <div>
                     <div className="text-[10px] font-mono text-muted uppercase">Nilai Dilaporkan</div>
-                    <div className="font-mono text-sm mt-1">{current.reportedValue}</div>
+                    <div className="font-mono text-sm mt-1">
+                      {current.reportedValue} {current.variableId?.unit}
+                    </div>
                   </div>
                 </div>
-                <div className="mt-4">
-                  <div className="text-[10px] font-mono text-muted uppercase mb-2">
-                    Bukti (Tervalidasi Sistem)
+
+                {current.status === "ditandai_gagal_ekstrak" && (
+                  <div className="flex items-start gap-2 mt-4 p-3 rounded-lg bg-accent-tint">
+                    <AlertTriangle size={14} className="text-accent mt-0.5 shrink-0" />
+                    <span className="text-[11.5px] text-[#7A5A1C]">
+                      Ekstraksi konten dokumen gagal total (DDT v2.0 3.4) — tetap masuk antrean, mohon
+                      periksa dokumen secara manual.
+                    </span>
                   </div>
-                  <a
-                    href={current.evidenceLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-success-tint text-success w-fit"
-                  >
-                    <Link2 size={14} />
-                    <span className="font-mono text-[11.5px]">{current.evidenceLink}</span>
-                    <CheckCircle2 size={14} />
-                  </a>
-                </div>
+                )}
+
+                {current.evidenceLink && (
+                  <div className="mt-4">
+                    <div className="text-[10px] font-mono text-muted uppercase mb-2">
+                      Bukti (Tervalidasi Sistem)
+                    </div>
+                    <a
+                      href={current.evidenceLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-success-tint text-success w-fit"
+                    >
+                      <Link2 size={14} />
+                      <span className="font-mono text-[11.5px]">{current.evidenceLink}</span>
+                      <CheckCircle2 size={14} />
+                    </a>
+                  </div>
+                )}
 
                 {isCrossCutting && (
                   <div className="mt-4 p-3 rounded-lg bg-info-tint">
                     <div className="flex items-center gap-2 text-info">
                       <Users size={14} />
-                      <span className="text-xs font-semibold">Indikator Cross-Cutting (F-05)</span>
+                      <span className="text-xs font-semibold">Variabel Cross-Cutting (F-05)</span>
                     </div>
                     {siblings.length === 0 ? (
                       <div className="text-[11.5px] text-[#33507A] mt-1.5">
-                        Belum ada OPD lain yang melapor untuk indikator &amp; periode ini.
+                        Belum ada PD lain yang melapor untuk variabel &amp; periode ini.
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1 mt-2">
@@ -196,7 +219,7 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
                     <div className="flex gap-3 mt-2">
                       <button
                         disabled={busy || rejectionNote.length === 0}
-                        onClick={() => decide("ditolak_bapperida")}
+                        onClick={() => decide("ditolak")}
                         className="px-4 py-2 rounded-lg bg-danger text-white text-sm font-semibold disabled:opacity-50"
                       >
                         Kirim Penolakan
@@ -217,14 +240,14 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
         <div className="flex items-center gap-2 mb-3">
           <ShieldCheck size={15} className="text-primary" />
           <span className="text-xs font-mono text-muted uppercase tracking-wide">
-            Override Nilai Final — Single-Tier (PRD 5.3)
+            Override Nilai Final Variabel — Single-Tier (PRD 5.3)
           </span>
         </div>
         <div className="bg-surface border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-bg">
-                {["Indikator", "Periode", "Final Value", ""].map((h) => (
+                {["Variabel", "Periode", "Final Value", ""].map((h) => (
                   <th key={h} className="text-left px-5 py-2.5 font-mono text-[10px] text-muted uppercase tracking-wide">
                     {h}
                   </th>
@@ -234,11 +257,13 @@ export function RekonClient({ queue, approved }: { queue: QueueItem[]; approved:
             <tbody>
               {approved.map((a) => (
                 <tr key={a._id} className="border-t border-border">
-                  <td className="px-5 py-3">{a.indicatorId?.label}</td>
+                  <td className="px-5 py-3">{a.variableId?.name}</td>
                   <td className="px-5 py-3 text-muted">
                     {a.periodLabel} {a.periodYear}
                   </td>
-                  <td className="px-5 py-3 font-mono">{a.value}</td>
+                  <td className="px-5 py-3 font-mono">
+                    {a.value} {a.variableId?.unit}
+                  </td>
                   <td className="px-5 py-3">
                     <button
                       onClick={() => setOverrideTarget(a)}
@@ -293,7 +318,7 @@ function OverrideModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const result = await overrideFinalValue({ finalValueId: target._id, newValue, reason });
+    const result = await overrideVariableFinalValue({ variableFinalValueId: target._id, newValue, reason });
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
@@ -305,8 +330,8 @@ function OverrideModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
       <div className="w-full max-w-lg bg-surface rounded-xl p-6">
-        <div className="text-base font-semibold text-ink">Override Nilai Final</div>
-        <div className="text-xs text-muted mt-1">{target.indicatorId?.label}</div>
+        <div className="text-base font-semibold text-ink">Override Nilai Final Variabel</div>
+        <div className="text-xs text-muted mt-1">{target.variableId?.name}</div>
 
         <label className="flex flex-col gap-1.5 mt-4">
           <span className="text-xs font-mono text-muted uppercase">Nilai Baru</span>
@@ -334,7 +359,8 @@ function OverrideModal({
           <Info size={14} className="text-info mt-0.5 shrink-0" />
           <span className="text-[11.5px] text-[#33507A] leading-relaxed">
             Tindakan ini bersifat single-tier tanpa persetujuan berjenjang, dan akan tercatat
-            permanen pada log audit (PRD 5.3).
+            permanen pada log audit (PRD 5.3). Karena nilai final variabel bersifat global, override
+            ini akan memengaruhi SELURUH indikator yang memakai variabel ini di formulanya.
           </span>
         </div>
 

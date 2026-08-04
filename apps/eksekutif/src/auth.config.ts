@@ -15,11 +15,15 @@ export const authConfig = {
   providers: [],
   callbacks: {
     jwt({ token, user }) {
-      if (user) token.role = user.role;
+      if (user) {
+        token.role = user.role;
+        token.username = user.username;
+      }
       return token;
     },
     session({ session, token }) {
       session.user.role = token.role as UserRole;
+      session.user.username = token.username as string;
       return session;
     },
   },
