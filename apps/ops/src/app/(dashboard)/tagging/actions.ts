@@ -195,9 +195,13 @@ export async function importBudgetStructure(
 
 /**
  * DDT v2.0 Section 3.6 langkah 4 — setelah impor selesai, untuk tiap
- * rekening yang REALISASI-nya berubah dan muncul di `Tagging.partialAllocations`
- * manapun, kirim notify() ke seluruh pengguna aktif PD pengampu subkegiatan
- * terkait.
+ * rekening yang REALISASI-nya berubah dan ter-tag (baik langsung lewat
+ * `Tagging.partialAllocations` [coverage="sebagian"], MAUPUN cascade dari
+ * tag di subkegiatan induknya dengan coverage="penuh" — lihat
+ * listBudgetTreeWithTags di atas: coverage="penuh" TIDAK PERNAH mengisi
+ * partialAllocations, tag-nya melekat ke seluruh rekening turunan lewat
+ * cascade tampilan, bukan lewat baris eksplisit), kirim notify() ke seluruh
+ * pengguna aktif PD pengampu.
  */
 async function notifyTaggedRekeningOnRealisasiChange(budgetYear: number, changedSipdCodes: Set<string>) {
   const TaggingModel = await getTaggingModel();
@@ -209,15 +213,20 @@ async function notifyTaggedRekeningOnRealisasiChange(budgetYear: number, changed
     level: "rekening",
     sipdCode: { $in: Array.from(changedSipdCodes) },
   })
-    .select("ownerWorkUnitId name realisasi")
+    .select("ownerWorkUnitId name realisasi parentId")
     .lean();
   if (changedRekening.length === 0) return;
   const changedRekeningIds = new Set(changedRekening.map((r) => r._id.toString()));
+  const parentSubkegiatanIds = Array.from(
+    new Set(changedRekening.map((r) => r.parentId?.toString()).filter((id): id is string => Boolean(id)))
+  );
 
   const taggings = await TaggingModel.find({
     budgetYear,
-    coverage: "sebagian",
-    "partialAllocations.rekeningStructureId": { $in: Array.from(changedRekeningIds) },
+    $or: [
+      { coverage: "sebagian", "partialAllocations.rekeningStructureId": { $in: Array.from(changedRekeningIds) } },
+      { coverage: "penuh", budgetStructureId: { $in: parentSubkegiatanIds } },
+    ],
   })
     .populate("themeId", "name")
     .lean();
@@ -227,8 +236,14 @@ async function notifyTaggedRekeningOnRealisasiChange(budgetYear: number, changed
   const notifiedPerRekening = new Set<string>();
 
   for (const tag of taggings) {
-    for (const allocation of tag.partialAllocations) {
-      const rekeningId = allocation.rekeningStructureId.toString();
+    const rekeningIdsForThisTag =
+      tag.coverage === "penuh"
+        ? changedRekening
+            .filter((r) => r.parentId?.toString() === tag.budgetStructureId.toString())
+            .map((r) => r._id.toString())
+        : tag.partialAllocations.map((a) => a.rekeningStructureId.toString());
+
+    for (const rekeningId of rekeningIdsForThisTag) {
       if (!changedRekeningIds.has(rekeningId) || notifiedPerRekening.has(rekeningId)) continue;
       const rekening = rekeningById.get(rekeningId);
       if (!rekening?.ownerWorkUnitId) continue;
